@@ -61,6 +61,7 @@ export function renderUiHtml() {
   .dot.folders { background: var(--lb-ok); }
   .dot.drives { background: var(--lb-warn); }
   .card-title { font-weight: 500; }
+  .card-desc { color: var(--lb-fg3); font-size: 12px; font-weight: 400; }
   .count { margin-left: auto; color: var(--lb-fg3); font-size: 12px; }
   .entries { display: flex; flex-direction: column; gap: 6px; min-height: 64px; max-height: 260px;
              overflow: auto; }
@@ -132,7 +133,7 @@ export function renderUiHtml() {
 
 <div class="grid">
   <div class="card" data-kind="files">
-    <div class="card-head"><span class="dot files"></span><span class="card-title">文件</span><span class="count" data-count></span></div>
+    <div class="card-head"><span class="dot files"></span><span class="card-title">锁定文件</span><span class="card-desc">支持所有文件类型</span><span class="count" data-count></span></div>
     <div class="entries" data-list></div>
     <div class="actions">
       <button class="btn primary" data-add>添加…</button>
@@ -151,7 +152,7 @@ export function renderUiHtml() {
   </div>
 
   <div class="card" data-kind="folders">
-    <div class="card-head"><span class="dot folders"></span><span class="card-title">文件夹</span><span class="count" data-count></span></div>
+    <div class="card-head"><span class="dot folders"></span><span class="card-title">锁定文件夹</span><span class="card-desc">打开要锁定的文件夹</span><span class="count" data-count></span></div>
     <div class="entries" data-list></div>
     <div class="actions">
       <button class="btn primary" data-add>添加…</button>
@@ -170,7 +171,7 @@ export function renderUiHtml() {
   </div>
 
   <div class="card" data-kind="drives">
-    <div class="card-head"><span class="dot drives"></span><span class="card-title">硬盘</span><span class="count" data-count></span></div>
+    <div class="card-head"><span class="dot drives"></span><span class="card-title">锁定分区</span><span class="card-desc">锁定的硬盘分区</span><span class="count" data-count></span></div>
     <div class="entries" data-list></div>
     <div class="actions">
       <button class="btn primary" data-add>添加…</button>

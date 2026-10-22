@@ -259,6 +259,7 @@ Context，mock `webServer.register` 捕获路由，再用 Node 风格 `req/res` 
 | 0.1.8 | 去掉 `.volatile()` → 设置里只保留「文件锁」一个入口 |
 | 0.1.9 | 文件夹/硬盘改用系统原生目录对话框（`ctx.directoryPicker` → `capability().pick()`），失败回退内置浏览器 |
 | 0.1.10 | 包图标改为锁（`assets/lock.svg` + 根 `icon` 字段）；设置页导航图标由宿主固定，插件不可改 |
+| 0.1.11 | 类别改名并加说明：锁定文件 / 锁定文件夹 / 锁定分区 |
 
 当前测试：`node --test` **27/27**（matcher / extractor / host / client 四组）。
 
