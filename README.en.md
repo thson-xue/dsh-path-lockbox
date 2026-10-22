@@ -236,6 +236,7 @@ Editing therefore happens only in the plugin UI; Settings is no longer an editor
 | 0.1.7 | `settings.section` → a 文件锁 section embedding the plugin UI |
 | 0.1.8 | drop `.volatile()` → only the 文件锁 entry remains |
 | 0.1.9 | folders/drives use the OS native directory dialog (`ctx.directoryPicker`), falling back to the in-page browser |
+| 0.1.10 | package icon is a lock (`assets/lock.svg` via the root `icon` field); the Settings nav glyph is host-fixed |
 
 Current tests: `node --test` **27/27** (matcher / extractor / host / client).
 

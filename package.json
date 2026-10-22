@@ -1,7 +1,8 @@
 {
   "name": "dsh-path-lockbox",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "DeepSeek Harness (dsh) 插件：按 文件/文件夹/硬盘 三类锁定路径，guard 单调拒绝 + pre-execute 拦截 + post-execute 结果过滤 + 变化监控。UI 参照 Windows 索引选项布局。",
+  "icon": "./assets/lock.svg",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
