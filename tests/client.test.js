@@ -21,7 +21,7 @@ function fakeReact() {
   };
 }
 
-/** 执行 lib/client.js，返回 { spec, mod }（mod 由工厂函数产出）。 */
+/** 执行 lib/client.js，返回 { spec, mod, react }（mod 由工厂函数产出）。 */
 function loadClient() {
   let spec;
   const win = { __ModuleLoader__: { load(value) { spec = value; } } };
@@ -38,20 +38,12 @@ function loadClient() {
   return { spec, mod, react };
 }
 
-test("client：注册到 plugins.detail.section", () => {
-  const { spec, mod } = loadClient();
-  assert.equal(spec.id, "dsh-path-lockbox");
-  assert.equal(mod.name, "path-lockbox-client");
-  assert.equal(typeof mod.apply, "function");
-  // 必须声明服务依赖，否则 ctx.slots 的属性访问会被代理陷阱拒绝，
-  // 该 client entry 激活失败，宿主会判定整个 web boot 失败。
-  assert.deepEqual(mod.inject, ["slots"]);
-
+/** 用假的 slots 服务跑一遍 apply，返回按 slot 名索引的注册表。 */
+function runApply(mod) {
   const registrations = [];
   const ctx = {
     slots: {
-      inject(name, fn) {
-        assert.equal(name, "plugins.detail.section");
+      inject(_name, fn) {
         return fn();
       },
       register(options, component) {
@@ -61,35 +53,67 @@ test("client：注册到 plugins.detail.section", () => {
     },
   };
   mod.apply(ctx);
+  return registrations;
+}
 
-  assert.equal(registrations.length, 1);
-  assert.equal(registrations[0].options.name, "plugins.detail.section");
-  assert.equal(registrations[0].options.key, "dsh-path-lockbox#ui");
-  assert.equal(typeof registrations[0].component, "function");
+test("client：声明 slots 服务依赖", () => {
+  const { spec, mod } = loadClient();
+  assert.equal(spec.id, "dsh-path-lockbox");
+  assert.equal(mod.name, "path-lockbox-client");
+  assert.equal(typeof mod.apply, "function");
+  // 必须声明服务依赖，否则 ctx.slots 的属性访问会被代理陷阱拒绝，
+  // 该 client entry 激活失败，宿主会判定整个 web boot 失败。
+  assert.deepEqual(mod.inject, ["slots"]);
 });
 
-test("client：只在本插件详情页渲染 iframe", () => {
-  const { mod, react } = loadClient();
-  let component;
-  mod.apply({
-    slots: {
-      inject: (_name, fn) => fn(),
-      register: (_options, c) => { component = c; return () => {}; },
-    },
-  });
-  assert.ok(component);
+test("client：设置页注册一个叫「文件锁」的栏目", () => {
+  const { mod } = loadClient();
+  const regs = runApply(mod);
+  const section = regs.find((r) => r.options.name === "settings.section");
+  assert.ok(section, "应注册 settings.section");
+  assert.equal(section.options.id, "path-lockbox");
+  assert.equal(typeof section.options.order, "number");
+  // label 是函数，宿主每次渲染重新取；必须是中文显示名
+  assert.equal(typeof section.options.label, "function");
+  assert.equal(section.options.label(), "文件锁");
+  assert.equal(typeof section.component, "function");
+});
 
-  const mine = component({ subject: { kind: "row", pkg: { name: "dsh-path-lockbox" } } });
+test("client：插件详情页注册配置区", () => {
+  const { mod } = loadClient();
+  const regs = runApply(mod);
+  const panel = regs.find((r) => r.options.name === "plugins.detail.section");
+  assert.ok(panel, "应注册 plugins.detail.section");
+  assert.equal(panel.options.key, "dsh-path-lockbox#ui");
+  assert.equal(typeof panel.component, "function");
+});
+
+test("client：详情页组件只在本插件页面渲染 iframe", () => {
+  const { mod, react } = loadClient();
+  const regs = runApply(mod);
+  const panel = regs.find((r) => r.options.name === "plugins.detail.section");
+
+  const mine = panel.component({ subject: { kind: "row", pkg: { name: "dsh-path-lockbox" } } });
   assert.equal(mine.type, "iframe");
   assert.equal(mine.props.src, "/path-lockbox/ui");
   assert.match(String(mine.props.style.height), /78vh/);
 
-  const other = component({ subject: { kind: "row", pkg: { name: "some-other-plugin" } } });
+  const other = panel.component({ subject: { kind: "row", pkg: { name: "some-other-plugin" } } });
   assert.equal(other, null);
 
   // subject 缺失时不应崩溃（详情页上下文可能只有部分字段）
-  assert.equal(component({}).type, "iframe");
+  assert.equal(panel.component({}).type, "iframe");
   assert.equal(react.created.length >= 2, true);
+});
+
+test("client：设置栏目渲染同一个界面", () => {
+  const { mod } = loadClient();
+  const regs = runApply(mod);
+  const section = regs.find((r) => r.options.name === "settings.section");
+  const node = section.component({});
+  assert.equal(node.type, "iframe");
+  assert.equal(node.props.src, "/path-lockbox/ui");
+  assert.equal(node.props.title, "文件锁");
 });
 
 test("client：没有 slots 服务时不抛错（宿主版本不同）", () => {
