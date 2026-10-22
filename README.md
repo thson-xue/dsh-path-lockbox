@@ -174,6 +174,55 @@ pnpm test           # node --test（matcher / 提取器纯函数）
    插件 UI 注册失败时只应退化为"直接访问 `/path-lockbox/ui`"，
    绝不能让整个应用起不来。`tests/client.test.js` 增加 `inject` 断言防回归。
 
+### 0.1.6 — 出现在「设置」页
+
+宿主的 `dsh-settings` 会遍历所有已激活的配置项：只要插件的 `runtime.Config`
+带 `toJSON()`，并且 `volatileForm()` 能从里面切出 **volatile** 字段，就自动生成一个
+设置项（`dsh-plugin-marketplace` 用的是同一机制：`z.object({...}).volatile()`）。
+
+因此新增：
+
+```js
+const PathEntry = z.object({
+  path: z.string(),
+  label: z.string().default(""),
+  recursive: z.boolean().default(true),
+  watch: z.boolean().default(false),
+});
+
+export const Config = z.object({
+  files: z.array(PathEntry).default([]),
+  folders: z.array(PathEntry).default([]),
+  drives: z.array(PathEntry).default([]),
+  matchCase: z.boolean().default(false),
+  guidance: z.boolean().default(true),
+  extraPathArgs: z.dict(z.array(z.string())).default({}),
+  extraCommandArgs: z.dict(z.string()).default({}),
+}).volatile();
+```
+
+配套改动：
+
+- `@deepseek-ai/schemastery` 加入 dependencies（构建时打包进 `lib/index.js`；
+  宿主识别 schema 用的是鸭子类型 `'toJSON' in schema`，不依赖模块实例同一性）；
+- **标了 `.volatile()` 之后 `apply(ctx, config)` 收到的 `config` 是可读取引用**，
+  必须 `config.get()`，因此新增 `readConfig()` 解包（普通对象仍然直读）；
+- 已用宿主同款 cordis 验证：带 schema 激活后 5 条路由照常注册、`/ui` 200。
+
+### 规则优先级（重要）
+
+`effectiveLists()` 的语义是**本地规则文件优先**：
+
+```
+$DSH_HOME\path-lockbox.json  （插件自带 UI 写入）
+        ↓ 不存在时才回落到
+profile config（设置页编辑的就是它）
+```
+
+所以设置页与插件自带 UI **同时可用，但后者优先**：一旦用自带 UI 保存过规则，
+设置页里的列表就不再生效（清空/删除该 JSON 后会重新以设置为准）。
+如果你希望反过来（设置页优先），告诉我，改一行即可。
+
 验证方式（不依赖重启）：用 asar 里抽出的宿主同款 `@deepseek-ai/cordis` 起最小
 Context，mock `webServer.register` 捕获路由，再用 Node 风格 `req/res` 实调：
 `GET /path-lockbox/ui` → 200（HTML）、`GET /path-lockbox/api/config` → 200（JSON）、

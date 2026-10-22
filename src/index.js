@@ -10,12 +10,48 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import z from "@deepseek-ai/schemastery";
 import { buildEntries, makeMatcher, normalizePath, expandTilde } from "./match.js";
 import { extractPathsFromCommand } from "./extract.js";
 import { rescanEntry, startWatcher } from "./scan.js";
 import { renderUiHtml } from "./ui.js";
 
 export const name = "path-lockbox";
+
+/**
+ * 设置在「设置」页出现的方式：声明 Config schema 并整体标 `.volatile()`。
+ *
+ * 宿主的 dsh-settings 会遍历所有已激活的 profile 配置项，凡 `runtime.Config`
+ * 带 `toJSON()` 且 `volatileForm()` 能切出 volatile 字段的，就自动生成一个设置项
+ * （`dsh-plugin-marketplace` 用同一机制）。因此这里只需要给出与运行时一致的形状，
+ * 设置页即可直接编辑，无需额外 UI 代码。
+ *
+ * 注意：标了 `.volatile()` 之后 `apply()` 收到的 `config` 是**可读取引用**，
+ * 必须用 `.get()` 取值（见下面的 readConfig）。
+ */
+const PathEntry = z.object({
+  path: z.string(),
+  label: z.string().default(""),
+  recursive: z.boolean().default(true),
+  watch: z.boolean().default(false),
+});
+
+export const Config = z.object({
+  files: z.array(PathEntry).default([]),
+  folders: z.array(PathEntry).default([]),
+  drives: z.array(PathEntry).default([]),
+  matchCase: z
+    .boolean()
+    .default(false)
+    .description("路径比较是否区分大小写（默认不区分）"),
+  guidance: z
+    .boolean()
+    .default(true)
+    .description("拒绝时是否附带修复指引"),
+  extraPathArgs: z.dict(z.array(z.string())).default({}),
+  extraCommandArgs: z.dict(z.string()).default({}),
+}).volatile();
+
 
 /**
  * Services this plugin reads off the context.
@@ -80,7 +116,13 @@ function coerceEntry(kind, raw, matchCase) {
 
 export function apply(ctx, config = {}) {
   const store = storeFile();
-  const cfg = () => config ?? {};
+  // Config 声明了 .volatile()，宿主传进来的 config 是可读取引用，需要 .get() 取值；
+  // 未走 schema（例如单测直接传普通对象）时按普通对象处理。
+  const readConfig = () => {
+    const raw = typeof config?.get === "function" ? config.get() : config;
+    return raw ?? {};
+  };
+  const cfg = () => readConfig();
   const matchCase = () => cfg().matchCase === true;
   const guidance = () => cfg().guidance !== false;
 
