@@ -512,6 +512,9 @@ export function apply(ctx, config = {}) {
   const json = (obj, status = 200) =>
     new Response(JSON.stringify(obj), { status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" } });
 
+  // 同一时刻只允许一个系统文件对话框
+  let pickingNative = false;
+
   const mounted =
     mountRoute("GET", "/path-lockbox/ui", fenced(async () => new Response(renderUiHtml(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } }))) &&
     mountRoute("GET", "/path-lockbox/api/config", fenced(async () =>
@@ -574,7 +577,37 @@ export function apply(ctx, config = {}) {
       const stats = await doRescan(body?.all ? null : body?.path);
       return json({ ok: true, stats });
     })) &&
-    mountRoute("GET", "/path-lockbox/api/events", fenced(async () => json({ events: runtime.events })));
+    mountRoute("GET", "/path-lockbox/api/events", fenced(async () => json({ events: runtime.events }))) &&
+    // 系统文件对话框：宿主提供 ctx.directoryPicker 且能力为 native 时交给它选；
+    // 否则返回 { native: false }，前端回退到内置浏览器。
+    mountRoute("POST", "/path-lockbox/api/pick", fenced(async (req) => {
+      const body = await readBody(req);
+      const kind = String(body?.kind ?? "");
+      if (kind !== "files" && kind !== "folders" && kind !== "drives") return json({ error: "bad kind" }, 400);
+      // native 能力是目录选择器（IFileOpenDialog + FOS_PICKFOLDERS），选不了文件；
+      // 文件类由前端继续用内置浏览器。
+      if (kind === "files") return json({ native: false, reason: "directory-only" });
+      let picker;
+      try {
+        picker = ctx.get("directoryPicker");
+      } catch {
+        picker = undefined;
+      }
+      const capability = typeof picker?.capability === "function" ? picker.capability() : undefined;
+      if (!capability || capability.kind !== "native" || typeof capability.pick !== "function") {
+        return json({ native: false });
+      }
+      if (pickingNative) return json({ native: true, error: "busy" }, 409);
+      pickingNative = true;
+      try {
+        const picked = await capability.pick();
+        return json({ native: true, path: picked ? String(picked) : null, cancelled: !picked });
+      } catch (e) {
+        return json({ native: true, error: String(e?.message ?? e) }, 502);
+      } finally {
+        pickingNative = false;
+      }
+    }));
 
   log(ctx, mounted ? "UI 路由已挂载：/path-lockbox/ui" : "webServer/connection 缺席或路由 API 不匹配，UI 不可用（拦截层不受影响）");
 

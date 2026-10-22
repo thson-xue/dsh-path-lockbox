@@ -343,7 +343,33 @@ export function renderUiHtml() {
   }
 
   // ---- 浏览选择 ----
+  async function addPicked(kind, path) {
+    if (kind === "drives") state.drives.push({ path, recursive: true, watch: false });
+    else if (kind === "folders") state.folders.push({ path, recursive: true, watch: false });
+    else state.files.push({ path });
+    sel[kind] = state[kind].length - 1;
+    await save(); await reload();
+  }
+
   async function openPicker(kind) {
+    // 目录类优先用系统文件对话框（宿主 ctx.directoryPicker 的 native 能力）。
+    // 文件类走不了：native 能力是目录选择器。宿主没有能力或调用失败时回退内置浏览器。
+    let res = null;
+    if (kind !== "files") {
+      try {
+        res = await api("pick", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ kind }),
+        });
+      } catch {
+        res = null;
+      }
+    }
+    if (res && res.native) {
+      if (res.path) { await addPicked(kind, res.path); return; }
+      return; // 用户取消或对话框忙：不弹内置浏览器
+    }
     pick.kind = kind; pick.selPath = "";
     $("pickTitle").textContent = KINDS[kind].pickTitle;
     $("pickOverlay").classList.add("show");
@@ -382,12 +408,8 @@ export function renderUiHtml() {
   $("pickOk").onclick = async () => {
     if (!pick.selPath) return;
     const k = pick.kind;
-    if (k === "drives") state.drives.push({ path: pick.selPath, recursive: true, watch: false });
-    else if (k === "folders") state.folders.push({ path: pick.selPath, recursive: true, watch: false });
-    else state.files.push({ path: pick.selPath });
     $("pickOverlay").classList.remove("show");
-    sel[k] = state[k].length - 1;
-    await save(); await reload();
+    await addPicked(k, pick.selPath);
   };
   $("pickCancel").onclick = () => $("pickOverlay").classList.remove("show");
 
