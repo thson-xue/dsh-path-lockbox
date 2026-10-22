@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { apply } from "../src/index.js";
+import { apply, Config } from "../src/index.js";
 
 function makeMockCtx(config) {
   const listeners = {};
@@ -129,3 +129,20 @@ test("lockbox_status 工具注册且只读", async () => {
   assert.equal(out.rules.files.length, 1);
   fs.rmSync(home, { recursive: true, force: true });
 });
+
+test("Config 只做校验，刻意保持非 volatile（不产生第二个设置入口）", () => {
+  assert.ok(Config, "应导出 Config");
+  assert.equal(typeof Config.toJSON, "function");
+  // dsh-settings 的 volatileForm() 只认 volatile 字段：一旦这里标了 .volatile()，
+  // 「设置」里就会多出一个以命名空间 id 为标题的自动表单。入口统一走客户端半身
+  // 注册的「文件锁」栏目，因此必须保持非 volatile。
+  assert.notEqual(Config.meta?.volatile, true);
+  // 根节点自身仍是 object，且带三个列表字段
+  assert.equal(Config.type, "object");
+  for (const key of ["files", "folders", "drives"]) {
+    assert.ok(Config.dict?.[key], `Config 应包含 ${key}`);
+  }
+  // toJSON 走的是带 refs 的引用表，序列化文本里能看到字段名
+  assert.match(JSON.stringify(Config.toJSON()), /files|folders|drives/);
+});
+

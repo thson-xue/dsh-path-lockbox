@@ -19,15 +19,17 @@ import { renderUiHtml } from "./ui.js";
 export const name = "path-lockbox";
 
 /**
- * 设置在「设置」页出现的方式：声明 Config schema 并整体标 `.volatile()`。
+ * Config：只做校验与默认值，**刻意不标 `.volatile()`**。
  *
- * 宿主的 dsh-settings 会遍历所有已激活的 profile 配置项，凡 `runtime.Config`
- * 带 `toJSON()` 且 `volatileForm()` 能切出 volatile 字段的，就自动生成一个设置项
- * （`dsh-plugin-marketplace` 用同一机制）。因此这里只需要给出与运行时一致的形状，
- * 设置页即可直接编辑，无需额外 UI 代码。
+ * 宿主的 dsh-settings 会遍历所有已激活的 profile 配置项，`volatileForm(schema)`
+ * 只认 volatile 字段：标了 `.volatile()` 就会在「设置」里多出一个自动生成的表单
+ * （标题是命名空间 id）；不标则完全不出现。
  *
- * 注意：标了 `.volatile()` 之后 `apply()` 收到的 `config` 是**可读取引用**，
- * 必须用 `.get()` 取值（见下面的 readConfig）。
+ * 本插件的入口统一走客户端半身注册的 `settings.section`（中文名「文件锁」，
+ * 内容是自带界面），所以这里保持非 volatile，避免出现第二个入口。
+ *
+ * 另：非 volatile 时 `apply()` 收到的 `config` 是普通对象；`readConfig()` 仍然
+ * 兼容 volatile 引用，防止以后有人改回来。
  */
 const PathEntry = z.object({
   path: z.string(),
@@ -50,7 +52,7 @@ export const Config = z.object({
     .description("拒绝时是否附带修复指引"),
   extraPathArgs: z.dict(z.array(z.string())).default({}),
   extraCommandArgs: z.dict(z.string()).default({}),
-}).volatile();
+});
 
 
 /**
