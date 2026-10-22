@@ -599,12 +599,18 @@ export function apply(ctx, config = {}) {
       }
       if (pickingNative) return json({ native: true, error: "busy" }, 409);
       pickingNative = true;
+      // native 能力要求 AbortSignal：pickWin32Directory 第一行就是 signal.aborted，
+      // 不传会抛 "Cannot read properties of undefined (reading 'aborted')"。
+      // abort 会关闭对话框（向对话框线程发 WM_CLOSE），这里用 10 分钟兜底。
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10 * 60 * 1000);
       try {
-        const picked = await capability.pick();
+        const picked = await capability.pick(controller.signal);
         return json({ native: true, path: picked ? String(picked) : null, cancelled: !picked });
       } catch (e) {
         return json({ native: true, error: String(e?.message ?? e) }, 502);
       } finally {
+        clearTimeout(timer);
         pickingNative = false;
       }
     }));

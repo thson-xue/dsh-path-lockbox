@@ -111,6 +111,7 @@ export function renderUiHtml() {
   .picklist div.file::before { content: "· "; color: var(--lb-fg3); }
   .picklist div.drive::before { content: "⛁ "; color: var(--lb-accent); }
   .picklist div.sel { background: var(--lb-accent); color: #fff; }
+  .picker-hint { color: var(--lb-fg3); font-size: 12px; margin: 0 0 8px; }
   .dlgbtns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
   input.txt { width: 100%; padding: 7px 10px; border: 0.5px solid var(--lb-border2);
               border-radius: 8px; font: 13px var(--font-mono, Consolas, monospace);
@@ -195,6 +196,7 @@ export function renderUiHtml() {
   <div class="dialog">
     <h3 id="pickTitle">选择路径</h3>
     <div class="crumb" id="crumb"></div>
+    <div class="picker-hint">双击进入文件夹，单击选中，点「确定」添加；未选中时添加当前路径。</div>
     <div class="picklist" id="pickList"></div>
     <div class="dlgbtns">
       <button class="btn" id="pickUp">上一级</button>
@@ -408,10 +410,13 @@ export function renderUiHtml() {
     await browse(d.parent || "/");
   };
   $("pickOk").onclick = async () => {
-    if (!pick.selPath) return;
     const k = pick.kind;
+    // 未选中条目时用当前路径：常见操作是双击进入目标文件夹后直接点确定，
+    // 旧逻辑此时直接 return，看起来像「按钮没反应」。
+    const path = pick.selPath || pick.path;
+    if (!path) return;
     $("pickOverlay").classList.remove("show");
-    await addPicked(k, pick.selPath);
+    await addPicked(k, path);
   };
   $("pickCancel").onclick = () => $("pickOverlay").classList.remove("show");
 

@@ -240,6 +240,7 @@ Editing therefore happens only in the plugin UI; Settings is no longer an editor
 | 0.1.11 | card titles renamed with inline hints: 锁定文件 / 锁定文件夹 / 锁定分区 |
 | 0.1.12 | button copy: “添加…” → “+”, “添加自定义” → “选择路径…”, with the dialog title and empty-state text aligned |
 | 0.1.13 | picker dialog titles follow the card names: 选择要锁定的文件 / 文件夹 / 分区 |
+| 0.1.14 | fix the native dialog never opening (missing `AbortSignal` on `pick`); the in-page picker falls back to the current path when nothing is selected |
 
 Current tests: `node --test` **27/27** (matcher / extractor / host / client).
 
