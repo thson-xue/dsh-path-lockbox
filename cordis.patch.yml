@@ -1,0 +1,20 @@
+# dsh-path-lockbox 部署默认配置（profile patch 层）。
+# 用户在插件页面的改动写入 $DSH_HOME/path-lockbox.json（用户层，整段替换本层的同名列表）。
+# 三个列表字段是 volatile 语义：宿主 settings 服务支持时，保存即时生效不重启；
+# 不支持时随 profile 重启生效。
+- insert:
+    - id: path-lockbox
+      name: dsh-path-lockbox
+      config:
+        # 文件（叶子，逐个锁定）
+        files: []
+        # 文件夹：{ path, recursive(索引子文件夹), watch(尝试监控变化) }
+        folders: []
+        # 硬盘：{ path: 'E:/', recursive, watch }
+        drives: []
+        matchCase: false
+        guidance: true
+        # 其它插件工具的路径参数登记：工具名 -> 参数名数组
+        extraPathArgs: {}
+        # 其它插件的 shell 类工具：工具名 -> 命令参数名
+        extraCommandArgs: {}
