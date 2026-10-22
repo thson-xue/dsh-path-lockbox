@@ -103,10 +103,10 @@ pnpm run build      # esbuild -> lib/index.js + lib/client.js
 pnpm test           # node --test (matcher / extractor pure functions)
 ```
 
-## Compatibility fixes (0.1.3 / 0.1.4)
+## Compatibility fixes and the Settings entry (0.1.3 → 0.1.8)
 
-Verified on dsh `0.2.1-rc.2`. Four bugs made the plugin install but never work (or never
-show its settings UI).
+Verified on dsh `0.2.1-rc.2`. The issues below once made the plugin install but do
+nothing, hide its UI, or take the whole shell down with it.
 
 ### 0.1.3 — activation and host routes
 
