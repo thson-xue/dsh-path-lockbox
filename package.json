@@ -1,6 +1,6 @@
 {
   "name": "dsh-path-lockbox",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "DeepSeek Harness (dsh) 插件：按 文件/文件夹/硬盘 三类锁定路径，guard 单调拒绝 + pre-execute 拦截 + post-execute 结果过滤 + 变化监控。UI 参照 Windows 索引选项布局。",
   "type": "module",
   "main": "lib/index.js",
@@ -15,7 +15,11 @@
       "patch": "./cordis.patch.yml"
     },
     "client": {
-      "platform": "web"
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-plugin-manager"
+      ]
     }
   },
   "engines": {
@@ -23,7 +27,7 @@
   },
   "scripts": {
     "build": "node build.mjs",
-    "test": "node --test tests/match.test.js tests/extract.test.js tests/host.test.js"
+    "test": "node --test tests/match.test.js tests/extract.test.js tests/host.test.js tests/client.test.js"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": ">=0.2.0-rc.2"

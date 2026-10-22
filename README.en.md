@@ -96,9 +96,12 @@ pnpm run build      # esbuild -> lib/index.js + lib/client.js
 pnpm test           # node --test (matcher / extractor pure functions)
 ```
 
-## Compatibility fixes (0.1.3)
+## Compatibility fixes (0.1.3 / 0.1.4)
 
-Verified on dsh `0.2.1-rc.2`. Three bugs made the plugin install but never work:
+Verified on dsh `0.2.1-rc.2`. Four bugs made the plugin install but never work (or never
+show its settings UI).
+
+### 0.1.3 — activation and host routes
 
 1. **`connection` in `inject` is a client-side service.** Cordis treats every `inject`
    entry as *required* (`_refresh`: a single missing service sets `epoch = INACTIVE`,
@@ -122,4 +125,22 @@ Verified on dsh `0.2.1-rc.2`. Three bugs made the plugin install but never work:
    It now merges per-path methods into one `register`, dispatches on `req.method`,
    bridges `(req, res)` with Web `Request`/`Response`, and tracks disposers. Hosts
    without `register` still fall back to the old probing.
+
+### 0.1.4 — the settings UI (client half)
+
+4. **The client half used the wrong UI-injection API.** In dsh 0.2.x UI slots are
+   registered with `ctx.slots.inject(name, fn)` + `ctx.slots.register({ name, key }, Component)`
+   (`slots` is provided by `@deepseek-ai/dsh-client-ui-renderer`). The old code called
+   `ctx.inject({ slot, id, render })`, which is the *service* injection API (the shape is
+   `ctx.inject(["service"], (inner) => …)`); it threw and the surrounding `try/catch`
+   swallowed it, so the plugin card rendered normally while its detail page never showed
+   any configuration UI.
+
+   Now: `dsh.client.inject` declares `@deepseek-ai/dsh-client-ui-renderer` and
+   `@deepseek-ai/dsh-client-ui-plugin-manager` (without them `ctx.slots` is unavailable);
+   the panel registers into `plugins.detail.section` (a list slot rendered in the plugin
+   detail page's config area) and filters on `subject.pkg.name` so it only appears on this
+   plugin's page; `build.mjs` marks `react` external for the client build; and the new
+   `tests/client.test.js` drives the bundle through a fake `window.__ModuleLoader__` and a
+   fake `require("react")` to assert the slot target, component behaviour and fallback.
 

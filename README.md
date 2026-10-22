@@ -109,9 +109,11 @@ pnpm run build      # esbuild -> lib/index.js + lib/client.js
 pnpm test           # node --test（matcher / 提取器纯函数）
 ```
 
-## 兼容性修复（0.1.3）
+## 兼容性修复（0.1.3 / 0.1.4）
 
-在 dsh `0.2.1-rc.2` 实测，修复三处会导致「插件装了但完全不工作」的问题：
+在 dsh `0.2.1-rc.2` 实测，修复四处会导致「插件装了但完全不工作 / 看不到设置界面」的问题。
+
+### 0.1.3 — 插件激活与宿主路由
 
 1. **`inject` 里的 `connection` 是客户端服务。** Cordis 把 `inject` 数组当**必需服务**
    （`_refresh`：任一缺失 → `epoch = INACTIVE` → `apply` 永不执行），而宿主编排层没有
@@ -134,6 +136,25 @@ pnpm test           # node --test（matcher / 提取器纯函数）
    - `(req, res)` ↔ Web `Request`/`Response` 双向桥接；
    - 记录 disposer，随插件卸载注销；
    - 旧宿主（无 `register`）仍退回原有探测。
+
+### 0.1.4 — 设置界面（客户端半身）
+
+4. **client 半身用错了 UI 注入 API。** dsh 0.2.x 的 UI 注入是
+   `ctx.slots.inject(name, fn)` + `ctx.slots.register({ name, key }, Component)`
+   （`slots` 由 `@deepseek-ai/dsh-client-ui-renderer` 提供）；原代码写的是
+   `ctx.inject({ slot, id, render })`——那是**服务注入** API（形状应为
+   `ctx.inject(["service"], (inner) => …)`），传错形状抛错后被 `try/catch` 静默吞掉，
+   所以插件卡片显示正常、详情页却始终没有配置界面。
+
+   现在：
+
+   - `dsh.client.inject` 声明 `@deepseek-ai/dsh-client-ui-renderer` 与
+     `@deepseek-ai/dsh-client-ui-plugin-manager`（不声明拿不到 `ctx.slots`）；
+   - 注册到 `plugins.detail.section`（list 槽，渲染在插件详情页的配置区），
+     用 `subject.pkg.name` 过滤，避免出现在其它插件的详情页；
+   - `build.mjs` 的 client 构建加 `external: ["react"]`（react 由宿主客户端运行时提供）；
+   - 新增 `tests/client.test.js`：用假 `window.__ModuleLoader__` + 假 `require("react")`
+     直接验证注册目标、组件行为与降级路径。
 
 验证方式（不依赖重启）：用 asar 里抽出的宿主同款 `@deepseek-ai/cordis` 起最小
 Context，mock `webServer.register` 捕获路由，再用 Node 风格 `req/res` 实调：

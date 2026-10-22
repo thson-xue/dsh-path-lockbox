@@ -38,12 +38,15 @@ await esbuild.build({
 });
 
 // 2) client 面：先打成 CJS，再包进宿主的模块加载器外壳。
+// react 由宿主客户端运行时提供（模块工厂的 require 能解析），这里必须标 external，
+// 否则 esbuild 会尝试从本包 node_modules 解析并失败。
 const pkg = JSON.parse(await fs.readFile(path.join(here, "package.json"), "utf8"));
 const client = await esbuild.build({
   ...common,
   entryPoints: [path.join(here, "src/client.js")],
   platform: "browser",
   format: "cjs",
+  external: ["react"],
   write: false,
 });
 
