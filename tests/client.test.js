@@ -43,6 +43,9 @@ test("client：注册到 plugins.detail.section", () => {
   assert.equal(spec.id, "dsh-path-lockbox");
   assert.equal(mod.name, "path-lockbox-client");
   assert.equal(typeof mod.apply, "function");
+  // 必须声明服务依赖，否则 ctx.slots 的属性访问会被代理陷阱拒绝，
+  // 该 client entry 激活失败，宿主会判定整个 web boot 失败。
+  assert.deepEqual(mod.inject, ["slots"]);
 
   const registrations = [];
   const ctx = {

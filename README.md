@@ -156,6 +156,24 @@ pnpm test           # node --test（matcher / 提取器纯函数）
    - 新增 `tests/client.test.js`：用假 `window.__ModuleLoader__` + 假 `require("react")`
      直接验证注册目标、组件行为与降级路径。
 
+### 0.1.5 — 客户端服务声明（修 0.1.4 的启动崩溃）
+
+5. **客户端插件必须声明服务依赖，否则会拖垮整个 web boot。** 0.1.4 直接读
+   `ctx.slots` 却没有声明它，Cordis 的注入守卫会拒绝该属性访问
+   （`cannot get property "slots" without inject`），这个 client entry 因此激活失败；
+   而宿主把「任一 entry 未激活」当成启动失败：
+
+   ```
+   web boot: 1 entry did not activate
+   dsh-path-lockbox: failed
+   ```
+
+   修法：`export const inject = ["slots"]`（与 `dsh-ops` 的
+   `exports.inject = ['slots', 'locale', 'remote']` 同形），并把
+   `require("react")`、`ctx.slots` 读取、槽注册**全部包在 try/catch 内** ——
+   插件 UI 注册失败时只应退化为"直接访问 `/path-lockbox/ui`"，
+   绝不能让整个应用起不来。`tests/client.test.js` 增加 `inject` 断言防回归。
+
 验证方式（不依赖重启）：用 asar 里抽出的宿主同款 `@deepseek-ai/cordis` 起最小
 Context，mock `webServer.register` 捕获路由，再用 Node 风格 `req/res` 实调：
 `GET /path-lockbox/ui` → 200（HTML）、`GET /path-lockbox/api/config` → 200（JSON）、
