@@ -70,6 +70,11 @@ dsh plugin --profile <profile> add github:<you>/dsh-path-lockbox
 `Config` schema **刻意不标 `.volatile()`**：否则 `dsh-settings` 会额外生成一个以命名空间
 id（`path-lockbox`）为标题的自动表单，与本表第一行的「文件锁」栏目重复。详见下文 0.1.8。
 
+选择路径时：**文件夹 / 硬盘**走操作系统的原生目录对话框（宿主 `ctx.directoryPicker`
+的 `native` 能力，Windows 上是 `IFileOpenDialog` + `FOS_PICKFOLDERS`）；宿主不提供该能力
+或调用失败时自动回退到内置浏览器。**文件**只有内置浏览器这一条路——native 能力是目录
+选择器，选不了文件。
+
 卡片功能对应关系：
 
 | 截图元素 | 本插件实现 |
@@ -252,6 +257,7 @@ Context，mock `webServer.register` 捕获路由，再用 Node 风格 `req/res` 
 | 0.1.6 | `Config` schema + `.volatile()` → 自动生成设置项 |
 | 0.1.7 | `settings.section` → 设置里显示中文名「文件锁」，栏目内嵌自带界面 |
 | 0.1.8 | 去掉 `.volatile()` → 设置里只保留「文件锁」一个入口 |
+| 0.1.9 | 文件夹/硬盘改用系统原生目录对话框（`ctx.directoryPicker` → `capability().pick()`），失败回退内置浏览器 |
 
 当前测试：`node --test` **27/27**（matcher / extractor / host / client 四组）。
 

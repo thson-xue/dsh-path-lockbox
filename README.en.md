@@ -62,6 +62,11 @@ The page itself is served by the host route `GET /path-lockbox/ui`; three entry 
 generate an auto form titled with the namespace id (`path-lockbox`), duplicating the
 "文件锁" section. See 0.1.8 below.
 
+When picking a path: **folders and drives** use the OS native directory dialog (the host's
+`ctx.directoryPicker` `native` capability — `IFileOpenDialog` + `FOS_PICKFOLDERS` on
+Windows) and fall back to the in-page browser when that capability is missing or fails.
+**Files** can only use the in-page browser: the native capability is a directory chooser.
+
 UI element mapping:
 
 | Source (Windows Indexing Options) | This plugin |
@@ -230,6 +235,7 @@ Editing therefore happens only in the plugin UI; Settings is no longer an editor
 | 0.1.6 | `Config` schema + `.volatile()` → auto settings entry |
 | 0.1.7 | `settings.section` → a 文件锁 section embedding the plugin UI |
 | 0.1.8 | drop `.volatile()` → only the 文件锁 entry remains |
+| 0.1.9 | folders/drives use the OS native directory dialog (`ctx.directoryPicker`), falling back to the in-page browser |
 
 Current tests: `node --test` **27/27** (matcher / extractor / host / client).
 
