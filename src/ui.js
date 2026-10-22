@@ -220,9 +220,9 @@ export function renderUiHtml() {
 <script>
 (() => {
   const KINDS = {
-    files:   { leaf: true,  pickTitle: "选择文件",  customHint: "输入文件的绝对路径，如 D:\\\\docs\\\\a.txt 或 ~/secrets.env。" },
-    folders: { leaf: false, pickTitle: "选择文件夹", customHint: "输入文件夹的绝对路径，如 D:\\\\docs 或 ~/work。" },
-    drives:  { leaf: false, pickTitle: "选择硬盘",  customHint: "输入盘符，如 E: / E:\\\\ / E:/。" },
+    files:   { leaf: true,  pickTitle: "选择要锁定的文件",   customHint: "输入文件的绝对路径，如 D:\\\\docs\\\\a.txt 或 ~/secrets.env。" },
+    folders: { leaf: false, pickTitle: "选择要锁定的文件夹", customHint: "输入文件夹的绝对路径，如 D:\\\\docs 或 ~/work。" },
+    drives:  { leaf: false, pickTitle: "选择要锁定的分区",   customHint: "输入盘符，如 E: / E:\\\\ / E:/。" },
   };
   const state = { files: [], folders: [], drives: [] };
   let stats = {};
