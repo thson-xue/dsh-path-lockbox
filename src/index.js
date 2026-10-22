@@ -17,6 +17,20 @@ import { renderUiHtml } from "./ui.js";
 
 export const name = "path-lockbox";
 
+/**
+ * Services this plugin reads off the context.
+ *
+ * Cordis only puts a declared service on `ctx`; without this list `ctx.tools`,
+ * `ctx.webServer` and `ctx.connection` are all undefined, so every layer below
+ * `apply()` silently no-ops: no guard, no `lockbox_status` tool, no
+ * `/path-lockbox/ui` route. The optional-call chains keep that quiet instead of
+ * throwing, which is why the plugin looked "loaded but dead".
+ *
+ * `connection` is declared because the router fences requests through it; the
+ * module reads it lazily too, so a host that never provides it still routes.
+ */
+export const inject = ["webServer", "tools", "connection"];
+
 const SHELL_TOOLS = new Set(["bash", "pwsh", "shell", "powershell"]);
 const PATH_ARGS_DEFAULT = ["file_path", "path", "target", "notebook_path"];
 
