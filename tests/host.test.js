@@ -39,7 +39,8 @@ function setup(config) {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), "lockbox-test-"));
   process.env.DSH_HOME = home;
   const ctx = makeMockCtx(config);
-  apply(ctx);
+  // Cordis 通过 apply 的第二个参数传入插件 config；ctx.config 并不存在（宿主只有 configForms）。
+  apply(ctx, config);
   return { ctx, home };
 }
 

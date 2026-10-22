@@ -95,3 +95,31 @@ pnpm install
 pnpm run build      # esbuild -> lib/index.js + lib/client.js
 pnpm test           # node --test (matcher / extractor pure functions)
 ```
+
+## Compatibility fixes (0.1.3)
+
+Verified on dsh `0.2.1-rc.2`. Three bugs made the plugin install but never work:
+
+1. **`connection` in `inject` is a client-side service.** Cordis treats every `inject`
+   entry as *required* (`_refresh`: a single missing service sets `epoch = INACTIVE`,
+   so `apply` never runs), while the host does not provide `connection` (only the client
+   package `@deepseek-ai/dsh-client-connection` does). The plugin therefore stayed
+   INACTIVE: the plugin page showed an error, `/path-lockbox/ui` returned 404, and
+   `lockbox_status` did not exist. Now `inject = ["webServer", "tools"]` and `connection`
+   is read lazily via `ctx.get("connection")` (property access on an undeclared service
+   throws `cannot get property ... without inject`).
+
+2. **`cfg()` read a nonexistent `ctx.config`.** The host has no `config` service (only
+   `configForms`), so the first `rebuild()` after activation threw and the plugin was
+   torn down. Now `apply(ctx, config = {})` uses the real argument, which also makes the
+   profile patch layer's `config:` effective.
+
+3. **`mountRoute` did not match the dsh 0.2.x webServer contract.** 0.2.1 only exposes
+   `register({ kind: "exact" | "prefix", path, handler })` with a Node-style
+   `(req, res)` handler, and a duplicate `(kind, path)` throws — there is no
+   `route` / `get` / `post`. The old code tried only those, and treated the final
+   `undefined` return as success, so it logged "routes mounted" while `/ui` stayed 404.
+   It now merges per-path methods into one `register`, dispatches on `req.method`,
+   bridges `(req, res)` with Web `Request`/`Response`, and tracks disposers. Hosts
+   without `register` still fall back to the old probing.
+

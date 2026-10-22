@@ -29,7 +29,7 @@ export const name = "path-lockbox";
  * `connection` is declared because the router fences requests through it; the
  * module reads it lazily too, so a host that never provides it still routes.
  */
-export const inject = ["webServer", "tools", "connection"];
+export const inject = ["webServer", "tools"];
 
 const SHELL_TOOLS = new Set(["bash", "pwsh", "shell", "powershell"]);
 const PATH_ARGS_DEFAULT = ["file_path", "path", "target", "notebook_path"];
@@ -78,9 +78,9 @@ function coerceEntry(kind, raw, matchCase) {
   };
 }
 
-export function apply(ctx) {
+export function apply(ctx, config = {}) {
   const store = storeFile();
-  const cfg = () => ctx.config ?? {};
+  const cfg = () => config ?? {};
   const matchCase = () => cfg().matchCase === true;
   const guidance = () => cfg().guidance !== false;
 
@@ -341,23 +341,105 @@ export function apply(ctx) {
 
   // ---------- 路由（webServer + connection 同时装配才挂载） ----------
 
+  // ---------- 路由（适配 dsh 0.2.1 的 webServer.register） ----------
+  // 0.2.1 只有 register({kind,path,handler})，handler 为 Node 风格 (req,res)，
+  // 且同 (kind,path) 重复注册会抛错，没有 route/get/post。因此这里：
+  //   1) 同一路径的多个方法合并成一条注册，在 Node handler 内按 req.method 分派；
+  //   2) Node (req,res) ↔ Web Request/Response 双向桥接；
+  //   3) 记录 disposer，随插件卸载注销。
+  const routePumps = new Map();
+  const routeDisposers = [];
+
+  function nodeToWebRequest(nodeReq, bodyBuf) {
+    const proto = nodeReq?.socket?.encrypted ? "https" : "http";
+    const host = nodeReq?.headers?.host ?? "127.0.0.1";
+    const method = String(nodeReq?.method ?? "GET").toUpperCase();
+    const headers = new Headers();
+    for (const [key, value] of Object.entries(nodeReq?.headers ?? {})) {
+      if (value === undefined || value === null) continue;
+      if (Array.isArray(value)) for (const item of value) headers.append(key, String(item));
+      else headers.set(key, String(value));
+    }
+    const init = { method, headers };
+    if (bodyBuf?.length && method !== "GET" && method !== "HEAD") init.body = bodyBuf;
+    return new Request(new URL(nodeReq?.url ?? "/", proto + "://" + host), init);
+  }
+
+  async function sendWebResponse(nodeRes, response) {
+    const status = Number(response?.status ?? 200);
+    const headers = {};
+    try { response?.headers?.forEach?.((value, key) => { headers[key] = value; }); } catch {}
+    try { nodeRes.writeHead(status, headers); } catch { try { nodeRes.statusCode = status; } catch {} }
+    let body = Buffer.alloc(0);
+    try { body = Buffer.from(await response.arrayBuffer()); } catch {}
+    nodeRes.end(body);
+  }
+
   function mountRoute(method, url, handler) {
     const ws = ctx.webServer;
     if (!ws) return false;
-    const attempts = [
-      () => ws.route?.(method, url, handler),
-      () => ws.route?.({ method, path: url, handler }),
-      () => (method === "GET" ? ws.get?.(url, handler) : ws.post?.(url, handler)),
-    ];
-    for (const a of attempts) {
-      try {
-        const r = a();
-        if (r !== false && r !== undefined) return true;
-        if (r === undefined && a === attempts[2]) return true;
-      } catch {}
+    const upper = String(method).toUpperCase();
+
+    if (typeof ws.register !== "function") {
+      // 旧宿主：退回 route/get/post
+      const legacy = [
+        () => ws.route?.(method, url, handler),
+        () => ws.route?.({ method, path: url, handler }),
+        () => (upper === "GET" ? ws.get?.(url, handler) : ws.post?.(url, handler))
+      ];
+      for (const attempt of legacy) {
+        try {
+          const r = attempt();
+          if (r !== false && r !== undefined) return true;
+        } catch {}
+      }
+      return false;
     }
-    return false;
+
+    let pump = routePumps.get(url);
+    if (pump) { pump.methods.set(upper, handler); return true; }
+
+    const methods = new Map([[upper, handler]]);
+    const nodeHandler = async (nodeReq, nodeRes) => {
+      const m = String(nodeReq?.method ?? "GET").toUpperCase();
+      const fn = methods.get(m) ?? (m === "HEAD" ? methods.get("GET") : undefined);
+      if (!fn) {
+        const allow = Array.from(methods.keys()).join(", ");
+        try { nodeRes.writeHead(405, { allow }); } catch { try { nodeRes.statusCode = 405; } catch {} }
+        nodeRes.end();
+        return;
+      }
+      let bodyBuf;
+      if (m !== "GET" && m !== "HEAD") {
+        const chunks = [];
+        try { for await (const chunk of nodeReq) chunks.push(chunk); } catch {}
+        bodyBuf = Buffer.concat(chunks);
+      }
+      try {
+        const response = await fn(nodeToWebRequest(nodeReq, bodyBuf));
+        await sendWebResponse(nodeRes, response);
+      } catch (e) {
+        try { nodeRes.writeHead(500, { "content-type": "text/plain; charset=utf-8" }); } catch { try { nodeRes.statusCode = 500; } catch {} }
+        nodeRes.end(String(e?.message ?? e));
+      }
+    };
+
+    let dispose;
+    try {
+      dispose = ws.register({ kind: "exact", path: url, handler: nodeHandler });
+    } catch (e) {
+      log(ctx, "路由注册失败 " + url + "：" + (e?.message ?? e));
+      return false;
+    }
+    routePumps.set(url, { methods, dispose });
+    if (typeof dispose === "function") routeDisposers.push(dispose);
+    return true;
   }
+
+  ctx.effect?.(() => () => {
+    for (const dispose of routeDisposers.splice(0)) { try { dispose(); } catch {} }
+    routePumps.clear();
+  });
 
   async function readBody(req) {
     try {
@@ -375,7 +457,7 @@ export function apply(ctx) {
   function fenced(handler) {
     return async (req, ...rest) => {
       try {
-        await ctx.connection?.requestRejection?.(req);
+        await ctx.get("connection")?.requestRejection?.(req);
       } catch (e) {
         return new Response("forbidden", { status: 403 });
       }

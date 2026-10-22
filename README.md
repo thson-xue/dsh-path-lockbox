@@ -108,3 +108,35 @@ pnpm install
 pnpm run build      # esbuild -> lib/index.js + lib/client.js
 pnpm test           # node --test（matcher / 提取器纯函数）
 ```
+
+## 兼容性修复（0.1.3）
+
+在 dsh `0.2.1-rc.2` 实测，修复三处会导致「插件装了但完全不工作」的问题：
+
+1. **`inject` 里的 `connection` 是客户端服务。** Cordis 把 `inject` 数组当**必需服务**
+   （`_refresh`：任一缺失 → `epoch = INACTIVE` → `apply` 永不执行），而宿主编排层没有
+   `connection`（只有客户端包 `@deepseek-ai/dsh-client-connection`）。插件因此长期停在
+   INACTIVE：插件页显示「异常」、`/path-lockbox/ui` 404、`lockbox_status` 不存在。
+   现改为 `inject = ["webServer", "tools"]`，并用 `ctx.get("connection")` 懒读
+   （`ctx.connection` 属性访问对未声明服务会抛 `cannot get property ... without inject`）。
+
+2. **`cfg()` 读了不存在的 `ctx.config`。** 宿主没有 `config` 服务（只有 `configForms`），
+   激活后第一次 `rebuild()` 就抛 `cannot get property "config" without inject`，
+   插件随即失败并被销毁。现改为 `apply(ctx, config = {})` 并用实参 `config`，
+   这样 profile patch 层里的 `config:` 也会被真正采用。
+
+3. **`mountRoute` 与 dsh 0.2.x 的 webServer 契约不匹配。** 0.2.1 只提供
+   `register({ kind: "exact" | "prefix", path, handler })`，handler 是 Node 风格
+   `(req, res)`，且同 `(kind, path)` 重复注册会抛错——没有 `route` / `get` / `post`。
+   原实现只试这三个方法，且在最后一次尝试返回 `undefined` 时误判成功，于是日志说
+   「UI 路由已挂载」而实际 404。现改为：
+   - 同一路径的多个方法合并成一条 `register`，在 Node handler 内按 `req.method` 分派；
+   - `(req, res)` ↔ Web `Request`/`Response` 双向桥接；
+   - 记录 disposer，随插件卸载注销；
+   - 旧宿主（无 `register`）仍退回原有探测。
+
+验证方式（不依赖重启）：用 asar 里抽出的宿主同款 `@deepseek-ai/cordis` 起最小
+Context，mock `webServer.register` 捕获路由，再用 Node 风格 `req/res` 实调：
+`GET /path-lockbox/ui` → 200（HTML）、`GET /path-lockbox/api/config` → 200（JSON）、
+`DELETE /path-lockbox/api/config` → 405 且 `allow: GET, POST`。
+
