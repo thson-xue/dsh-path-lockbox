@@ -1,5 +1,7 @@
 # dsh-path-lockbox
 
+**中文** | [English](README.en.md)
+
 DeepSeek Harness（dsh）插件：把指定的**文件 / 文件夹 / 硬盘分区**对 agent 彻底锁死——
 就算会话开了 danger-full-access（完全访问）也动不了。UI 为卡片式，适配宿主主题，
 按三类分卡片管理，功能布局对应 Windows「索引选项」的交互模型
