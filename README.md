@@ -59,10 +59,16 @@ dsh plugin --profile <profile> add github:<you>/dsh-path-lockbox
 
 ## UI
 
-宿主装配 webServer + connection 时自动挂载：
+界面本体由宿主路由 `GET /path-lockbox/ui` 提供；三处入口共用同一份页面：
 
-- 插件页（若宿主提供 slot 注入）：**Plugins → path-lockbox** 内嵌卡片页
-- 直达地址：`GET /path-lockbox/ui`
+| 入口 | 位置 | 说明 |
+|---|---|---|
+| **设置 → 文件锁**（推荐） | 设置页左侧导航 | 客户端半身注册 `settings.section`，`label` 返回中文「文件锁」 |
+| 插件详情页配置区 | 插件 → `dsh-path-lockbox` | `plugins.detail.section` 槽，只在本插件自己的页面渲染 |
+| 直达地址 | `GET /path-lockbox/ui` | 不依赖任何 slot，永远可用（也是其它入口的兜底） |
+
+`Config` schema **刻意不标 `.volatile()`**：否则 `dsh-settings` 会额外生成一个以命名空间
+id（`path-lockbox`）为标题的自动表单，与本表第一行的「文件锁」栏目重复。详见下文 0.1.8。
 
 卡片功能对应关系：
 
@@ -109,9 +115,10 @@ pnpm run build      # esbuild -> lib/index.js + lib/client.js
 pnpm test           # node --test（matcher / 提取器纯函数）
 ```
 
-## 兼容性修复（0.1.3 / 0.1.4）
+## 兼容性修复与设置入口（0.1.3 → 0.1.8）
 
-在 dsh `0.2.1-rc.2` 实测，修复四处会导致「插件装了但完全不工作 / 看不到设置界面」的问题。
+在 dsh `0.2.1-rc.2` 实测。下面这些缺陷曾让插件「装了但不工作」「看不到界面」
+「一个插件拖垮整个应用」，逐条记录以便回溯。
 
 ### 0.1.3 — 插件激活与宿主路由
 
@@ -174,57 +181,78 @@ pnpm test           # node --test（matcher / 提取器纯函数）
    插件 UI 注册失败时只应退化为"直接访问 `/path-lockbox/ui`"，
    绝不能让整个应用起不来。`tests/client.test.js` 增加 `inject` 断言防回归。
 
-### 0.1.6 — 出现在「设置」页
+### 0.1.6 — 自动生成设置项（后被 0.1.7 取代）
 
-宿主的 `dsh-settings` 会遍历所有已激活的配置项：只要插件的 `runtime.Config`
-带 `toJSON()`，并且 `volatileForm()` 能从里面切出 **volatile** 字段，就自动生成一个
-设置项（`dsh-plugin-marketplace` 用的是同一机制：`z.object({...}).volatile()`）。
+宿主 `dsh-settings` 的机制：遍历所有已激活的配置项，只要 `runtime.Config` 带
+`toJSON()`，且 `volatileForm()` 能从中切出 **volatile** 字段，就自动生成一个设置项
+（`dsh-plugin-marketplace` 用的是同一套：`z.object({...}).volatile()`）。
 
-因此新增：
+于是补充了 `Config` schema（`files` / `folders` / `drives` / `matchCase` / `guidance` /
+`extraPathArgs` / `extraCommandArgs`），并把 `@deepseek-ai/schemastery` 加入
+dependencies（构建时打包进 `lib/index.js`；宿主按鸭子类型 `'toJSON' in schema`
+识别，不依赖模块实例同一性）。
+
+副作用：标题是命名空间 id（`path-lockbox`），而且是自动生成的通用表单，不如自带界面好用。
+
+### 0.1.7 — 「文件锁」栏目（settings.section）
+
+设置页左侧导航由 `settings.section` 槽构建，条目自带 `id` / `order` / `label`：
 
 ```js
-const PathEntry = z.object({
-  path: z.string(),
-  label: z.string().default(""),
-  recursive: z.boolean().default(true),
-  watch: z.boolean().default(false),
-});
-
-export const Config = z.object({
-  files: z.array(PathEntry).default([]),
-  folders: z.array(PathEntry).default([]),
-  drives: z.array(PathEntry).default([]),
-  matchCase: z.boolean().default(false),
-  guidance: z.boolean().default(true),
-  extraPathArgs: z.dict(z.array(z.string())).default({}),
-  extraCommandArgs: z.dict(z.string()).default({}),
-}).volatile();
+ctx.slots.inject("settings.section", () =>
+  ctx.slots.register(
+    { name: "settings.section", id: "path-lockbox", order: 50, label: () => "文件锁" },
+    PathLockboxSection, // 直接嵌入 /path-lockbox/ui
+  ),
+);
 ```
 
-配套改动：
+`label` 是函数，宿主每次渲染重新取值 → 显示中文「文件锁」；栏目内容就是插件自带界面。
+`dsh.client.inject` 同时补上 `@deepseek-ai/dsh-client-ui-settings`（它声明该槽）。
 
-- `@deepseek-ai/schemastery` 加入 dependencies（构建时打包进 `lib/index.js`；
-  宿主识别 schema 用的是鸭子类型 `'toJSON' in schema`，不依赖模块实例同一性）；
-- **标了 `.volatile()` 之后 `apply(ctx, config)` 收到的 `config` 是可读取引用**，
-  必须 `config.get()`，因此新增 `readConfig()` 解包（普通对象仍然直读）；
-- 已用宿主同款 cordis 验证：带 schema 激活后 5 条路由照常注册、`/ui` 200。
+### 0.1.8 — 只保留一个入口
 
-### 规则优先级（重要）
+0.1.6 的自动表单与 0.1.7 的「文件锁」并列会显示两个入口，因此把 `Config` 的
+`.volatile()` 去掉：
 
-`effectiveLists()` 的语义是**本地规则文件优先**：
-
-```
-$DSH_HOME\path-lockbox.json  （插件自带 UI 写入）
-        ↓ 不存在时才回落到
-profile config（设置页编辑的就是它）
+```diff
+- export const Config = z.object({ ... }).volatile();
++ export const Config = z.object({ ... });
 ```
 
-所以设置页与插件自带 UI **同时可用，但后者优先**：一旦用自带 UI 保存过规则，
-设置页里的列表就不再生效（清空/删除该 JSON 后会重新以设置为准）。
-如果你希望反过来（设置页优先），告诉我，改一行即可。
+`volatileForm()` 只认 volatile 字段 → 自动表单不再生成；schema 仍负责校验与默认值。
+`readConfig()` 依旧兼容 volatile 引用（`typeof config.get === "function"`），
+`tests/host.test.js` 有一条断言锁住「必须刻意非 volatile」，防止重复入口回归。
+
+### 规则从哪来（优先级）
+
+```
+$DSH_HOME\path-lockbox.json   ← 唯一可写入口：插件自带界面保存规则
+        ↓ 该文件不存在时回落到
+profile config                ← 仅作默认值（cordis.patch.yml 的 config:）
+```
+
+也就是说 **日常编辑只有自带界面一处**，设置页不再是编辑器（`Config` 已非 volatile）。
+若你希望「设置」页也能编辑，把 `.volatile()` 加回 `Config` 即可（会同时恢复那个自动表单）。
+
 
 验证方式（不依赖重启）：用 asar 里抽出的宿主同款 `@deepseek-ai/cordis` 起最小
 Context，mock `webServer.register` 捕获路由，再用 Node 风格 `req/res` 实调：
 `GET /path-lockbox/ui` → 200（HTML）、`GET /path-lockbox/api/config` → 200（JSON）、
 `DELETE /path-lockbox/api/config` → 405 且 `allow: GET, POST`。
+
+## 版本脉络
+
+| 版本 | 内容 |
+|---|---|
+| 0.1.2 | 初始版本（在 dsh 0.2.x 上装得上但不工作） |
+| 0.1.3 | 宿主激活：`inject` 去掉客户端服务 `connection`；`cfg()` 改用 `apply` 实参；`mountRoute` 适配 `webServer.register` |
+| 0.1.4 | client 半身改用 `ctx.slots`；补齐 `dsh.client.inject`；react external |
+| 0.1.5 | 声明 `inject = ["slots"]`；UI 注册失败可降级，不再影响启动 |
+| 0.1.6 | `Config` schema + `.volatile()` → 自动生成设置项 |
+| 0.1.7 | `settings.section` → 设置里显示中文名「文件锁」，栏目内嵌自带界面 |
+| 0.1.8 | 去掉 `.volatile()` → 设置里只保留「文件锁」一个入口 |
+
+当前测试：`node --test` **27/27**（matcher / extractor / host / client 四组）。
+
 

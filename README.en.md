@@ -50,10 +50,17 @@ Deployment defaults live in this repo's `cordis.patch.yml` (three lists: `files`
 
 ## UI
 
-Mounted automatically when the host assembles webServer + connection:
+The page itself is served by the host route `GET /path-lockbox/ui`; three entry points share it:
 
-- Plugin page (if the host supports slot injection): embedded card page under **Plugins → path-lockbox**
-- Direct URL: `GET /path-lockbox/ui`
+| Entry | Location | Notes |
+|---|---|---|
+| **Settings → 文件锁** (recommended) | Settings left navigation | the client half registers `settings.section` with a Chinese `label` |
+| Plugin detail page | Plugins → `dsh-path-lockbox` | the `plugins.detail.section` slot; renders only on this plugin's page |
+| Direct URL | `GET /path-lockbox/ui` | needs no slot at all; also the fallback for the other two |
+
+`Config` is **deliberately not marked `.volatile()`**: otherwise `dsh-settings` would also
+generate an auto form titled with the namespace id (`path-lockbox`), duplicating the
+"文件锁" section. See 0.1.8 below.
 
 UI element mapping:
 
@@ -143,4 +150,87 @@ show its settings UI).
    plugin's page; `build.mjs` marks `react` external for the client build; and the new
    `tests/client.test.js` drives the bundle through a fake `window.__ModuleLoader__` and a
    fake `require("react")` to assert the slot target, component behaviour and fallback.
+
+### 0.1.5 — declare the slots service (fixes a boot crash)
+
+5. **A client plugin must declare its service dependencies.** 0.1.4 read `ctx.slots`
+   without declaring it, so Cordis's inject guard rejected the property access
+   (`cannot get property "slots" without inject`); that entry failed to activate and the
+   host treats any unactivated entry as a boot failure
+   (`web boot: 1 entry did not activate / dsh-path-lockbox: failed`).
+
+   Fix: `export const inject = ["slots"]` (same shape as dsh-ops' `['slots', 'locale',
+   'remote']`), and keep `require("react")`, the `ctx.slots` read and the slot
+   registration inside `try/catch` — a UI registration failure may degrade to the plain
+   `/path-lockbox/ui` URL but must never take the shell down.
+
+### 0.1.6 — auto-generated settings entry (superseded by 0.1.7)
+
+`dsh-settings` walks every active profile entry: when `runtime.Config` has `toJSON()` and
+`volatileForm()` can slice volatile fields out of it, it generates a settings entry
+(`dsh-plugin-marketplace` uses the same mechanism: `z.object({...}).volatile()`).
+
+So a `Config` schema was added (`files` / `folders` / `drives` / `matchCase` / `guidance` /
+`extraPathArgs` / `extraCommandArgs`) plus a dependency on `@deepseek-ai/schemastery`
+(bundled by esbuild; the host detects schemas by duck typing, so bundling is safe).
+Downside: the title is the namespace id and the form is generic.
+
+### 0.1.7 — a "文件锁" section (settings.section)
+
+The Settings navigation is built from the `settings.section` slot, whose entries carry
+`id` / `order` / `label`:
+
+```js
+ctx.slots.inject("settings.section", () =>
+  ctx.slots.register(
+    { name: "settings.section", id: "path-lockbox", order: 50, label: () => "文件锁" },
+    PathLockboxSection, // embeds /path-lockbox/ui
+  ),
+);
+```
+
+`label` is a function re-evaluated on every render, so the entry reads 文件锁. The section
+body is the plugin's own UI. `dsh.client.inject` also declares
+`@deepseek-ai/dsh-client-ui-settings` (it declares that slot).
+
+### 0.1.8 — keep only one entry
+
+The 0.1.6 auto form and the 0.1.7 section showed up side by side, so `.volatile()` was
+removed from `Config`:
+
+```diff
+- export const Config = z.object({ ... }).volatile();
++ export const Config = z.object({ ... });
+```
+
+`volatileForm()` only accepts volatile fields, so the auto form disappears; the schema
+still validates and supplies defaults. `readConfig()` keeps unwrapping a volatile
+reference in case it returns, and `tests/host.test.js` asserts the schema stays
+deliberately non-volatile so the duplicate entry cannot come back unnoticed.
+
+### Where rules come from
+
+```
+$DSH_HOME\path-lockbox.json   <- the only writable source: saved by the plugin's own UI
+        ↓ fallback when that file does not exist
+profile config                <- defaults only (cordis.patch.yml's config:)
+```
+
+Editing therefore happens only in the plugin UI; Settings is no longer an editor
+(`Config` is non-volatile). Re-adding `.volatile()` would restore the auto form.
+
+## Version history
+
+| Version | Content |
+|---|---|
+| 0.1.2 | initial release (installs on dsh 0.2.x but does nothing) |
+| 0.1.3 | host activation (`inject`), `cfg()` from `apply(config)`, `webServer.register` route adapter |
+| 0.1.4 | client half uses `ctx.slots`; `dsh.client.inject`; react external |
+| 0.1.5 | `inject = ["slots"]`; UI registration failures degrade instead of breaking boot |
+| 0.1.6 | `Config` schema + `.volatile()` → auto settings entry |
+| 0.1.7 | `settings.section` → a 文件锁 section embedding the plugin UI |
+| 0.1.8 | drop `.volatile()` → only the 文件锁 entry remains |
+
+Current tests: `node --test` **27/27** (matcher / extractor / host / client).
+
 
