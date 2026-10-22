@@ -238,6 +238,7 @@ Editing therefore happens only in the plugin UI; Settings is no longer an editor
 | 0.1.9 | folders/drives use the OS native directory dialog (`ctx.directoryPicker`), falling back to the in-page browser |
 | 0.1.10 | package icon is a lock (`assets/lock.svg` via the root `icon` field); the Settings nav glyph is host-fixed |
 | 0.1.11 | card titles renamed with inline hints: 锁定文件 / 锁定文件夹 / 锁定分区 |
+| 0.1.12 | button copy: “添加…” → “+”, “添加自定义” → “选择路径…”, with the dialog title and empty-state text aligned |
 
 Current tests: `node --test` **27/27** (matcher / extractor / host / client).
 

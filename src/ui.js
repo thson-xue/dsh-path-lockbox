@@ -85,6 +85,7 @@ export function renderUiHtml() {
   .btn:hover:not(:disabled) { border-color: var(--lb-accent); color: var(--lb-accent); }
   .btn:disabled { color: var(--lb-fg3); cursor: default; }
   .btn.primary { background: var(--lb-accent); border-color: var(--lb-accent); color: #fff; }
+  .btn.plus { min-width: 32px; padding: 6px 0; font-size: 16px; font-weight: 600; line-height: 1; }
   .btn.danger:hover:not(:disabled) { border-color: var(--lb-danger); color: var(--lb-danger); }
   .settings { border-top: 0.5px solid var(--lb-border); padding-top: 10px; display: none; }
   .settings.show { display: block; }
@@ -136,8 +137,8 @@ export function renderUiHtml() {
     <div class="card-head"><span class="dot files"></span><span class="card-title">锁定文件</span><span class="card-desc">支持所有文件类型</span><span class="count" data-count></span></div>
     <div class="entries" data-list></div>
     <div class="actions">
-      <button class="btn primary" data-add>添加…</button>
-      <button class="btn" data-custom>添加自定义</button>
+      <button class="btn primary plus" data-add title="添加">+</button>
+      <button class="btn" data-custom>选择路径…</button>
       <button class="btn danger" data-remove>移除</button>
       <button class="btn" data-rescan>立即重扫描</button>
     </div>
@@ -155,8 +156,8 @@ export function renderUiHtml() {
     <div class="card-head"><span class="dot folders"></span><span class="card-title">锁定文件夹</span><span class="card-desc">打开要锁定的文件夹</span><span class="count" data-count></span></div>
     <div class="entries" data-list></div>
     <div class="actions">
-      <button class="btn primary" data-add>添加…</button>
-      <button class="btn" data-custom>添加自定义</button>
+      <button class="btn primary plus" data-add title="添加">+</button>
+      <button class="btn" data-custom>选择路径…</button>
       <button class="btn danger" data-remove>移除</button>
       <button class="btn" data-rescan>立即重扫描</button>
     </div>
@@ -174,8 +175,8 @@ export function renderUiHtml() {
     <div class="card-head"><span class="dot drives"></span><span class="card-title">锁定分区</span><span class="card-desc">锁定的硬盘分区</span><span class="count" data-count></span></div>
     <div class="entries" data-list></div>
     <div class="actions">
-      <button class="btn primary" data-add>添加…</button>
-      <button class="btn" data-custom>添加自定义</button>
+      <button class="btn primary plus" data-add title="添加">+</button>
+      <button class="btn" data-custom>选择路径…</button>
       <button class="btn danger" data-remove>移除</button>
       <button class="btn" data-rescan>立即重扫描</button>
     </div>
@@ -205,7 +206,7 @@ export function renderUiHtml() {
 
 <div class="overlay" id="customOverlay">
   <div class="dialog" style="width:480px">
-    <h3 id="customTitle">添加自定义</h3>
+    <h3 id="customTitle">选择路径</h3>
     <div class="sub" id="customHint"></div>
     <input class="txt" id="customInput" spellcheck="false">
     <div class="hint" id="customErr"></div>
@@ -247,7 +248,7 @@ export function renderUiHtml() {
     const box = q(c, "[data-list]");
     box.innerHTML = "";
     if (!arr.length) {
-      box.innerHTML = '<div class="empty">暂无条目，点「添加…」或「添加自定义」</div>';
+      box.innerHTML = '<div class="empty">暂无条目，点「+」或「选择路径…」</div>';
     }
     arr.forEach((e, i) => {
       const div = document.createElement("div");
