@@ -39,6 +39,8 @@ export function renderUiHtml() {
     }
   }
   * { box-sizing: border-box; }
+  /* flex 子项上的 hidden 会被 display 覆盖，这里兜底 */
+  [hidden] { display: none !important; }
   body { margin: 0; padding: 20px; background: var(--lb-page); color: var(--lb-fg);
          font: 13px/1.6 var(--font-sans, "Segoe UI", "Microsoft YaHei", sans-serif); }
   h1 { font-size: 15px; font-weight: 500; margin: 0; }
@@ -154,6 +156,7 @@ export function renderUiHtml() {
       <button class="btn primary plus" data-add title="添加">+</button>
       <button class="btn" data-custom>选择路径…</button>
       <button class="btn" data-rescan>立即重扫描</button>
+      <button class="btn danger" data-clear-all hidden>清除全部</button>
       <button class="btn" data-select-all style="margin-left:auto">全选</button>
     </div>
     <div class="settings" data-settings>
@@ -173,6 +176,7 @@ export function renderUiHtml() {
       <button class="btn primary plus" data-add title="添加">+</button>
       <button class="btn" data-custom>选择路径…</button>
       <button class="btn" data-rescan>立即重扫描</button>
+      <button class="btn danger" data-clear-all hidden>清除全部</button>
       <button class="btn" data-select-all style="margin-left:auto">全选</button>
     </div>
     <div class="settings" data-settings>
@@ -192,6 +196,7 @@ export function renderUiHtml() {
       <button class="btn primary plus" data-add title="添加">+</button>
       <button class="btn" data-custom>选择路径…</button>
       <button class="btn" data-rescan>立即重扫描</button>
+      <button class="btn danger" data-clear-all hidden>清除全部</button>
       <button class="btn" data-select-all style="margin-left:auto">全选</button>
     </div>
     <div class="settings" data-settings>
@@ -288,6 +293,22 @@ export function renderUiHtml() {
         allSel[kind] = !allSel[kind];
         if (allSel[kind]) sel[kind] = -1;
         renderAll();
+      };
+    }
+    // 「清除全部」：全选后才出现。只从规则里移除本类条目，绝不碰磁盘上的文件。
+    const ca = q(c, "[data-clear-all]");
+    if (ca) {
+      ca.hidden = !allSel[kind] || state[kind].length === 0;
+      ca.onclick = async () => {
+        const n = state[kind].length;
+        if (!n) return;
+        const label = q(c, ".card-title").textContent;
+        if (!confirm("从「" + label + "」移除全部 " + n + " 条锁定规则？只清除规则，不会删除任何文件。")) return;
+        state[kind] = [];
+        allSel[kind] = false;
+        sel[kind] = -1;
+        await save();
+        await reload();
       };
     }
     const box = q(c, "[data-list]");
