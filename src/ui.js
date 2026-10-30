@@ -253,21 +253,31 @@ export function renderUiHtml() {
       box.innerHTML = '<div class="empty">暂无条目，点「+」或「选择路径…」</div>';
     }
     arr.forEach((e, i) => {
-      const div = document.createElement("div");
-      div.className = "entry" + (i === sel[kind] ? " sel" : "");
-      const badge = k.leaf ? "" :
-        '<span class="badge ' + (e.recursive ? "on" : "off") + '">' + (e.recursive ? "含子项" : "仅本层") + "</span>" +
-        '<span class="badge ' + (e.watch ? "on" : "off") + '">' + (e.watch ? "监控中" : "未监控") + "</span>";
-      div.innerHTML = "<span>" + esc(e.path) + "</span>" + badge +
-        '<button class="rm" title="移除">✕</button>';
-      div.onclick = (ev) => {
-        if (ev.target.classList.contains("rm")) return;
-        sel[kind] = i; renderAll();
-      };
-      q(div, ".rm").onclick = async () => {
-        arr.splice(i, 1); sel[kind] = -1; await save(); renderAll();
-      };
-      box.appendChild(div);
+      // 单条渲染失败不能拖垮整张卡片：catch 进来并把原因写进列表，否则
+      // 表现就是「上面显示 N 条、下面一片空白」，没有任何线索可查。
+      try {
+        const div = document.createElement("div");
+        div.className = "entry" + (i === sel[kind] ? " sel" : "");
+        const badge = k.leaf ? "" :
+          '<span class="badge ' + (e.recursive ? "on" : "off") + '">' + (e.recursive ? "含子项" : "仅本层") + "</span>" +
+          '<span class="badge ' + (e.watch ? "on" : "off") + '">' + (e.watch ? "监控中" : "未监控") + "</span>";
+        div.innerHTML = "<span>" + esc(e.path) + "</span>" + badge +
+          '<button class="rm" title="移除">✕</button>';
+        div.onclick = (ev) => {
+          if (ev.target.classList.contains("rm")) return;
+          sel[kind] = i; renderAll();
+        };
+        const rm = q(div, ".rm");
+        if (rm) rm.onclick = async () => {
+          arr.splice(i, 1); sel[kind] = -1; await save(); renderAll();
+        };
+        box.appendChild(div);
+      } catch (err) {
+        const bad = document.createElement("div");
+        bad.className = "empty";
+        bad.textContent = "条目渲染失败：" + (err && err.message ? err.message : String(err));
+        box.appendChild(bad);
+      }
     });
     renderSettings(kind);
   }

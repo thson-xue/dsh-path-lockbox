@@ -522,7 +522,11 @@ export function apply(ctx, config = {}) {
         "$d.CheckFileExists = $true",
         "$d.Multiselect = $false",
         "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {",
-        "  [Console]::Out.Write($d.FileName)",
+        // 必须走 UTF-8 + Base64：中文 Windows 上 PowerShell 的控制台编码是
+        // GBK(936)，直接 Write 文件名会让 node 侧按 utf8 解出一串 U+FFFD，
+        // 存进去的规则指向一个不存在的路径。Base64 是纯 ASCII，不受代码页影响。
+        "  $b = [System.Text.Encoding]::UTF8.GetBytes($d.FileName)",
+        "  [Console]::Out.Write([Convert]::ToBase64String($b))",
         "}",
       ].join("\n");
       const child = spawnProcess(
@@ -541,7 +545,12 @@ export function apply(ctx, config = {}) {
       child.once("error", (e) => { clearTimeout(timer); reject(e); });
       child.once("close", (code) => {
         clearTimeout(timer);
-        const picked = out.trim();
+        // stdout 是 UTF-8 文件名的 Base64；解不出来就当没选。
+        const raw = out.trim();
+        let picked = null;
+        if (raw) {
+          try { picked = Buffer.from(raw, "base64").toString("utf8"); } catch { picked = null; }
+        }
         if (code === 0) resolve(picked || null);
         else reject(new Error(err.trim() || "file dialog exited with " + code));
       });
