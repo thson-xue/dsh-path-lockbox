@@ -59,6 +59,19 @@ export function renderUiHtml() {
   .card-title { font-weight: 500; }
   .card-desc { color: var(--lb-fg3); font-size: 12px; font-weight: 400; }
   .count { margin-left: auto; color: var(--lb-fg3); font-size: 12px; }
+  /* 每类卡片的总开关 */
+  .sw { margin-left: 6px; display: inline-flex; align-items: center; cursor: pointer; }
+  .sw input { appearance: none; -webkit-appearance: none; width: 30px; height: 17px; margin: 0;
+              border-radius: 99px; background: var(--lb-bg2); border: 0.5px solid var(--lb-border2);
+              position: relative; cursor: pointer; transition: background .15s, border-color .15s; }
+  .sw input::after { content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px;
+                     border-radius: 50%; background: var(--lb-fg3);
+                     transition: transform .15s, background .15s; }
+  .sw input:checked { background: var(--lb-accent); border-color: transparent; }
+  .sw input:checked::after { transform: translateX(13px); background: #fff; }
+  .card.off .entries { opacity: .4; }
+  .card.off .card-title::after {
+    content: " · 已停用"; color: var(--lb-warn); font-size: 11px; font-weight: 400; }
   .entries { display: flex; flex-direction: column; gap: 6px; min-height: 64px; max-height: 260px;
              overflow: auto; }
   .empty { color: var(--lb-fg3); border: 1px dashed var(--lb-border); border-radius: 8px;
@@ -131,7 +144,7 @@ export function renderUiHtml() {
 
 <div class="grid">
   <div class="card" data-kind="files">
-    <div class="card-head"><span class="dot files"></span><span class="card-title">锁定文件</span><span class="card-desc">支持所有文件类型</span><span class="count" data-count></span></div>
+    <div class="card-head"><span class="dot files"></span><span class="card-title">锁定文件</span><span class="card-desc">支持所有文件类型</span><span class="count" data-count></span><label class="sw" title="启用本类规则"><input type="checkbox" data-enabled></label></div>
     <div class="entries" data-list></div>
     <div class="actions">
       <button class="btn primary plus" data-add title="添加">+</button>
@@ -150,7 +163,7 @@ export function renderUiHtml() {
   </div>
 
   <div class="card" data-kind="folders">
-    <div class="card-head"><span class="dot folders"></span><span class="card-title">锁定文件夹</span><span class="card-desc">打开要锁定的文件夹</span><span class="count" data-count></span></div>
+    <div class="card-head"><span class="dot folders"></span><span class="card-title">锁定文件夹</span><span class="card-desc">打开要锁定的文件夹</span><span class="count" data-count></span><label class="sw" title="启用本类规则"><input type="checkbox" data-enabled></label></div>
     <div class="entries" data-list></div>
     <div class="actions">
       <button class="btn primary plus" data-add title="添加">+</button>
@@ -169,7 +182,7 @@ export function renderUiHtml() {
   </div>
 
   <div class="card" data-kind="drives">
-    <div class="card-head"><span class="dot drives"></span><span class="card-title">锁定分区</span><span class="card-desc">锁定的硬盘分区</span><span class="count" data-count></span></div>
+    <div class="card-head"><span class="dot drives"></span><span class="card-title">锁定分区</span><span class="card-desc">锁定的硬盘分区</span><span class="count" data-count></span><label class="sw" title="启用本类规则"><input type="checkbox" data-enabled></label></div>
     <div class="entries" data-list></div>
     <div class="actions">
       <button class="btn primary plus" data-add title="添加">+</button>
@@ -228,7 +241,7 @@ export function renderUiHtml() {
     folders: { leaf: false, pickTitle: "选择要锁定的文件夹", customHint: "输入文件夹的绝对路径，如 D:\\\\docs 或 ~/work。" },
     drives:  { leaf: false, pickTitle: "选择要锁定的分区",   customHint: "输入盘符，如 E: / E:\\\\ / E:/。" },
   };
-  const state = { files: [], folders: [], drives: [] };
+  const state = { files: [], folders: [], drives: [], enabled: { files: true, folders: true, drives: true } };
   let stats = {};
   const sel = { files: -1, folders: -1, drives: -1 };
   let pick = { path: "", selPath: "", kind: "" };
@@ -249,6 +262,18 @@ export function renderUiHtml() {
     const c = card(kind);
     const arr = state[kind];
     q(c, "[data-count]").textContent = arr.length + " 条";
+    // 总开关：关掉只影响拦截层，条目仍留在列表里，随时可以再打开。
+    const on = state.enabled[kind] !== false;
+    const sw = q(c, "[data-enabled]");
+    if (sw) {
+      sw.checked = on;
+      sw.onchange = async () => {
+        state.enabled[kind] = sw.checked;
+        await save();
+        await reload();
+      };
+    }
+    c.classList.toggle("off", !on);
     const box = q(c, "[data-list]");
     box.innerHTML = "";
     if (!arr.length) {
@@ -325,6 +350,13 @@ export function renderUiHtml() {
   async function reload() {
     const d = await api("config");
     for (const k of Object.keys(KINDS)) state[k] = d.config[k] ?? [];
+    if (d.enabled) {
+      state.enabled = {
+        files: d.enabled.files !== false,
+        folders: d.enabled.folders !== false,
+        drives: d.enabled.drives !== false,
+      };
+    }
     stats = d.stats || {};
     window.__evCount = (d.events || []).length;
     for (const k of Object.keys(sel)) if (sel[k] >= state[k].length) sel[k] = state[k].length - 1;

@@ -43,6 +43,14 @@ export const Config = z.object({
   files: z.array(PathEntry).default([]),
   folders: z.array(PathEntry).default([]),
   drives: z.array(PathEntry).default([]),
+  enabled: z
+    .object({
+      files: z.boolean().default(true),
+      folders: z.boolean().default(true),
+      drives: z.boolean().default(true),
+    })
+    .default({ files: true, folders: true, drives: true })
+    .description("每类规则的总开关；关掉的那一类不参与拦截，但规则仍保留"),
   matchCase: z
     .boolean()
     .default(false)
@@ -149,14 +157,32 @@ export function apply(ctx, config = {}) {
     };
   }
 
+  /**
+   * 每类卡片的总开关。
+   *
+   * 关掉的那一类规则**不参与拦截**，但条目保留在存储与 UI 里，重新打开即恢复 ——
+   * 相当于临时停用整组规则，而不是逐条删除。存储里没有 `enabled` 的旧文件按全开处理。
+   */
+  function effectiveEnabled() {
+    const s = loadStore(store);
+    const src = s?.enabled ?? cfg().enabled ?? {};
+    return {
+      files: src.files !== false,
+      folders: src.folders !== false,
+      drives: src.drives !== false,
+    };
+  }
+
   function rebuild() {
     const lists = effectiveLists();
+    const on = effectiveEnabled();
     const mc = matchCase();
     const built = buildEntries(
       {
-        files: lists.files,
-        folders: lists.folders,
-        drives: lists.drives,
+        // 停用的类别传空列表：buildEntries 跳过它，规则仍留在存储里。
+        files: on.files ? lists.files : [],
+        folders: on.folders ? lists.folders : [],
+        drives: on.drives ? lists.drives : [],
       },
       { matchCase: mc },
     );
@@ -577,16 +603,24 @@ export function apply(ctx, config = {}) {
   const mounted =
     mountRoute("GET", "/path-lockbox/ui", fenced(async () => new Response(renderUiHtml(), { headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" } }))) &&
     mountRoute("GET", "/path-lockbox/api/config", fenced(async () =>
-      json({ config: effectiveLists(), stats: runtime.stats, events: runtime.events }))) &&
+      json({ config: effectiveLists(), enabled: effectiveEnabled(), stats: runtime.stats, events: runtime.events }))) &&
     mountRoute("POST", "/path-lockbox/api/config", fenced(async (req) => {
       const body = await readBody(req);
       const mc = matchCase();
-      const data = { version: 1, files: [], folders: [], drives: [] };
+      const data = {
+        version: 1,
+        enabled: { files: true, folders: true, drives: true },
+        files: [],
+        folders: [],
+        drives: [],
+      };
       for (const kind of ["files", "folders", "drives"]) {
         for (const raw of asList(body?.[kind])) {
           const e = coerceEntry(kind, raw, mc);
           if (e) data[kind].push(e);
         }
+        const flag = body?.enabled?.[kind];
+        if (flag !== undefined) data.enabled[kind] = flag !== false;
       }
       saveStore(store, data);
       rebuild();
