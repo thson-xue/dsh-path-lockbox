@@ -75,7 +75,8 @@ test("client：设置页注册一个叫「文件锁」的栏目", () => {
   assert.equal(typeof section.options.order, "number");
   // label 是函数，宿主每次渲染重新取；必须是中文显示名
   assert.equal(typeof section.options.label, "function");
-  assert.equal(section.options.label(), "文件锁");
+  // 导航项带锁头字符：宿主把设置导航的图标硬编码成齿轮，插件无法指定 icon
+  assert.equal(section.options.label(), "🔒 文件锁");
   assert.equal(typeof section.component, "function");
 });
 

@@ -28,7 +28,13 @@ const PACKAGE_NAME = "dsh-path-lockbox";
 const SECTION_SLOT = "settings.section";
 const SECTION_ID = "path-lockbox";
 const SECTION_ORDER = 50;
-const SECTION_LABEL = "文件锁";
+// 宿主把设置导航的图标硬编码成 IconSettingsOutlineMedium（齿轮）：
+// contract 只有 id/order/label，没有 icon 位，也不能复用内置 id 的图标
+// （agent-presets / plugins / archived-sessions 会抢别人的栏目）。
+// 所以用锁头字符补一个视觉提示 —— 这是插件层面唯一能改的部分。
+const SECTION_LABEL = "🔒 文件锁";
+// iframe 的 title 走读屏，保持纯文字（不混 emoji）
+const FRAME_TITLE = "文件锁";
 
 // 插件详情页配置区
 const PANEL_SLOT = "plugins.detail.section";
@@ -58,7 +64,8 @@ function PathLockboxFrame(title, height) {
 
 /** 设置页「文件锁」栏目内容：直接嵌入插件自带界面。 */
 function PathLockboxSection() {
-  return PathLockboxFrame(SECTION_LABEL, "72vh");
+  // iframe 的 title 是给读屏用的，用纯文字；导航项才带锁头字符。
+  return PathLockboxFrame(FRAME_TITLE, "72vh");
 }
 
 /** 插件详情页配置区：只在 dsh-path-lockbox 自己的页面渲染。 */
