@@ -3,10 +3,6 @@
 // （--color-background-* / --color-text-* / --color-border-*），缺席时按系统
 // 明暗色回退。分类：文件 / 文件夹 / 硬盘，每类一张卡片。
 
-function esc(s) {
-  return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-}
-
 export function renderUiHtml() {
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -221,6 +217,12 @@ export function renderUiHtml() {
 
 <script>
 (() => {
+  // 这段脚本在浏览器里执行，访问不到 Node 模块作用域 —— esc 必须定义在这里。
+  // （之前它写在模块顶层，于是每个条目渲染都抛 "esc is not defined"，
+  //   卡片显示 N 条、列表却空白。）
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
   const KINDS = {
     files:   { leaf: true,  pickTitle: "选择要锁定的文件",   customHint: "输入文件的绝对路径，如 D:\\\\docs\\\\a.txt 或 ~/secrets.env。" },
     folders: { leaf: false, pickTitle: "选择要锁定的文件夹", customHint: "输入文件夹的绝对路径，如 D:\\\\docs 或 ~/work。" },
