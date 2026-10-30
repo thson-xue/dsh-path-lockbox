@@ -149,8 +149,8 @@ export function renderUiHtml() {
     <div class="actions">
       <button class="btn primary plus" data-add title="添加">+</button>
       <button class="btn" data-custom>选择路径…</button>
-      <button class="btn danger" data-remove>移除</button>
       <button class="btn" data-rescan>立即重扫描</button>
+      <button class="btn" data-select-all style="margin-left:auto">全选</button>
     </div>
     <div class="settings" data-settings>
       <div class="path" data-setpath></div>
@@ -168,8 +168,8 @@ export function renderUiHtml() {
     <div class="actions">
       <button class="btn primary plus" data-add title="添加">+</button>
       <button class="btn" data-custom>选择路径…</button>
-      <button class="btn danger" data-remove>移除</button>
       <button class="btn" data-rescan>立即重扫描</button>
+      <button class="btn" data-select-all style="margin-left:auto">全选</button>
     </div>
     <div class="settings" data-settings>
       <div class="path" data-setpath></div>
@@ -187,8 +187,8 @@ export function renderUiHtml() {
     <div class="actions">
       <button class="btn primary plus" data-add title="添加">+</button>
       <button class="btn" data-custom>选择路径…</button>
-      <button class="btn danger" data-remove>移除</button>
       <button class="btn" data-rescan>立即重扫描</button>
+      <button class="btn" data-select-all style="margin-left:auto">全选</button>
     </div>
     <div class="settings" data-settings>
       <div class="path" data-setpath></div>
@@ -244,6 +244,8 @@ export function renderUiHtml() {
   const state = { files: [], folders: [], drives: [], enabled: { files: true, folders: true, drives: true } };
   let stats = {};
   const sel = { files: -1, folders: -1, drives: -1 };
+  // 「全选」是独立于单条选择的视觉状态：只影响高亮，不改动规则本身。
+  const allSel = { files: false, folders: false, drives: false };
   let pick = { path: "", selPath: "", kind: "" };
 
   const $ = (id) => document.getElementById(id);
@@ -274,6 +276,16 @@ export function renderUiHtml() {
       };
     }
     c.classList.toggle("off", !on);
+    // 「全选」只切换高亮，不动规则；全选时清掉单条选择，免得设置区显示某一条。
+    const sa = q(c, "[data-select-all]");
+    if (sa) {
+      sa.textContent = allSel[kind] ? "取消全选" : "全选";
+      sa.onclick = () => {
+        allSel[kind] = !allSel[kind];
+        if (allSel[kind]) sel[kind] = -1;
+        renderAll();
+      };
+    }
     const box = q(c, "[data-list]");
     box.innerHTML = "";
     if (!arr.length) {
@@ -284,7 +296,7 @@ export function renderUiHtml() {
       // 表现就是「上面显示 N 条、下面一片空白」，没有任何线索可查。
       try {
         const div = document.createElement("div");
-        div.className = "entry" + (i === sel[kind] ? " sel" : "");
+        div.className = "entry" + ((allSel[kind] || i === sel[kind]) ? " sel" : "");
         const badge = k.leaf ? "" :
           '<span class="badge ' + (e.recursive ? "on" : "off") + '">' + (e.recursive ? "含子项" : "仅本层") + "</span>" +
           '<span class="badge ' + (e.watch ? "on" : "off") + '">' + (e.watch ? "监控中" : "未监控") + "</span>";
@@ -292,6 +304,7 @@ export function renderUiHtml() {
           '<button class="rm" title="移除">✕</button>';
         div.onclick = (ev) => {
           if (ev.target.classList.contains("rm")) return;
+          allSel[kind] = false;
           sel[kind] = i; renderAll();
         };
         const rm = q(div, ".rm");
