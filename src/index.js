@@ -10,6 +10,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
+import { spawn as spawnProcess } from "node:child_process";
 import z from "@deepseek-ai/schemastery";
 import { buildEntries, makeMatcher, normalizePath, expandTilde } from "./match.js";
 import { extractPathsFromCommand } from "./extract.js";
@@ -498,6 +499,55 @@ export function apply(ctx, config = {}) {
   }
   }
 
+  /**
+   * 用 Win32 系统文件对话框选单个文件。
+   *
+   * 宿主的 `ctx.directoryPicker` native 能力固定是 IFileOpenDialog +
+   * FOS_PICKFOLDERS（只选目录），所以文件类走不了它。这里改调 .NET 的
+   * OpenFileDialog：由 shell 渲染，外观与资源管理器里的「打开」对话框一致，
+   * 返回的是完整绝对路径 —— 不像 `<input type="file">` 只给文件名。
+   *
+   * `-STA` 是必需的：WinForms 的对话框要在 STA 线程里 Show，否则 COM 会报错。
+   * 对话框是模态的，用户不关就一直挂在子进程里，所以外面加了 10 分钟兜底。
+   *
+   * @param title - 对话框标题。
+   * @returns 选中的绝对路径；用户取消时返回 null。
+   */
+  function pickNativeFile(title) {
+    return new Promise((resolve, reject) => {
+      const script = [
+        "Add-Type -AssemblyName System.Windows.Forms | Out-Null",
+        "$d = New-Object System.Windows.Forms.OpenFileDialog",
+        `$d.Title = '${String(title).replace(/'/g, "''")}'`,
+        "$d.CheckFileExists = $true",
+        "$d.Multiselect = $false",
+        "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {",
+        "  [Console]::Out.Write($d.FileName)",
+        "}",
+      ].join("\n");
+      const child = spawnProcess(
+        "powershell.exe",
+        ["-NoProfile", "-NonInteractive", "-STA", "-Command", script],
+        { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] },
+      );
+      let out = "";
+      let err = "";
+      const timer = setTimeout(() => {
+        try { child.kill(); } catch {}
+        reject(new Error("file dialog timed out"));
+      }, 10 * 60 * 1000);
+      child.stdout.on("data", (chunk) => { out += chunk.toString("utf8"); });
+      child.stderr.on("data", (chunk) => { err += chunk.toString("utf8"); });
+      child.once("error", (e) => { clearTimeout(timer); reject(e); });
+      child.once("close", (code) => {
+        clearTimeout(timer);
+        const picked = out.trim();
+        if (code === 0) resolve(picked || null);
+        else reject(new Error(err.trim() || "file dialog exited with " + code));
+      });
+    });
+  }
+
   function fenced(handler) {
     return async (req, ...rest) => {
       try {
@@ -584,9 +634,23 @@ export function apply(ctx, config = {}) {
       const body = await readBody(req);
       const kind = String(body?.kind ?? "");
       if (kind !== "files" && kind !== "folders" && kind !== "drives") return json({ error: "bad kind" }, 400);
-      // native 能力是目录选择器（IFileOpenDialog + FOS_PICKFOLDERS），选不了文件；
-      // 文件类由前端继续用内置浏览器。
-      if (kind === "files") return json({ native: false, reason: "directory-only" });
+      // 文件类：宿主的 native 能力固定是 IFileOpenDialog + FOS_PICKFOLDERS
+      // （只选目录），选不了文件。这里改用 Win32 的 OpenFileDialog —— 由 shell
+      // 渲染，就是资源管理器里那个「打开」对话框，返回完整绝对路径。
+      // 非 win32 或弹窗失败时返回 { native: false }，前端回退内置浏览器。
+      if (kind === "files") {
+        if (process.platform !== "win32") return json({ native: false, reason: "platform" });
+        if (pickingNative) return json({ native: true, error: "busy" }, 409);
+        pickingNative = true;
+        try {
+          const picked = await pickNativeFile("选择要锁定的文件");
+          return json({ native: true, path: picked, cancelled: !picked });
+        } catch (e) {
+          return json({ native: true, error: String(e?.message ?? e) }, 502);
+        } finally {
+          pickingNative = false;
+        }
+      }
       let picker;
       try {
         picker = ctx.get("directoryPicker");

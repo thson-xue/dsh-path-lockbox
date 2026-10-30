@@ -356,23 +356,23 @@ export function renderUiHtml() {
   }
 
   async function openPicker(kind) {
-    // 目录类优先用系统文件对话框（宿主 ctx.directoryPicker 的 native 能力）。
-    // 文件类走不了：native 能力是目录选择器。宿主没有能力或调用失败时回退内置浏览器。
+    // 优先用系统对话框：目录走宿主 ctx.directoryPicker 的 native 能力，
+    // 文件走宿主侧的 Win32 OpenFileDialog（两者都由 /api/pick 统一暴露）。
+    // 平台不支持、宿主没能力或弹窗失败时回退内置浏览器。
     let res = null;
-    if (kind !== "files") {
-      try {
-        res = await api("pick", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ kind }),
-        });
-      } catch {
-        res = null;
-      }
+    try {
+      res = await api("pick", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ kind }),
+      });
+    } catch {
+      res = null;
     }
     if (res && res.native) {
       if (res.path) { await addPicked(kind, res.path); return; }
-      return; // 用户取消或对话框忙：不弹内置浏览器
+      if (res.cancelled || res.error === "busy") return; // 取消或忙：不弹内置浏览器
+      // 其它失败（对话框起不来）落到内置浏览器，至少还能选
     }
     pick.kind = kind; pick.selPath = "";
     $("pickTitle").textContent = KINDS[kind].pickTitle;
