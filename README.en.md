@@ -2,7 +2,7 @@
 
 [中文说明](README.md) | **English**
 
-A DeepSeek Harness (dsh) plugin that locks specified **files / folders / drive roots** against the agent completely — even in a `danger-full-access` (full access) session, nothing can touch them. The UI is card-based, follows the host theme, and is organized into three category cards. The interaction model mirrors the Windows "Indexing Options" dialog: a list plus *Add… / Add custom… / Remove / Rescan selected / Rescan all*, and per-entry checkboxes *"Index subfolders"* and *"Monitor changes"*.
+A DeepSeek Harness (dsh) plugin that locks specified **files / folders / drive roots** against the agent completely — even in a `danger-full-access` (full access) session, nothing can touch them. The UI is card-based, follows the host theme, and is organized into three category cards. The interaction model mirrors the Windows "Indexing Options" dialog: a list plus *Add… / Add custom… / Select all / Clear all / Rescan selected / Rescan all*, a per-card master switch, and per-entry checkboxes *"Index subfolders"* and *"Monitor changes"*.
 
 MIT licensed.
 
@@ -44,6 +44,8 @@ Deployment defaults live in this repo's `cordis.patch.yml` (three lists: `files`
         files:   [{ path: "D:/contracts/quote-final.xlsx" }]
         folders: [{ path: "D:/client-data", recursive: true, watch: true }]
         drives:  [{ path: "E:/", recursive: true, watch: false }]
+        # Per-card master switch: a disabled class drops out of the matcher but keeps its rules
+        enabled: { files: true, folders: true, drives: true }
         matchCase: false
         guidance: true
 ```
@@ -62,23 +64,46 @@ The page itself is served by the host route `GET /path-lockbox/ui`; three entry 
 generate an auto form titled with the namespace id (`path-lockbox`), duplicating the
 "文件锁" section. See 0.1.8 below.
 
-When picking a path: **folders and drives** use the OS native directory dialog (the host's
-`ctx.directoryPicker` `native` capability — `IFileOpenDialog` + `FOS_PICKFOLDERS` on
-Windows) and fall back to the in-page browser when that capability is missing or fails.
-**Files** can only use the in-page browser: the native capability is a directory chooser.
+When picking a path, everything goes through an OS dialog:
+
+- **Folders and drives** use the host's `ctx.directoryPicker` `native` capability
+  (`IFileOpenDialog` + `FOS_PICKFOLDERS` on Windows).
+- **Files** cannot use it — that capability is hard-wired to a directory chooser — so the
+  plugin opens the Win32 `OpenFileDialog` itself (`powershell -NoProfile -NonInteractive
+  -STA`). It is the same "Open" dialog Explorer uses and it returns a full absolute path,
+  unlike `<input type="file">` which only exposes the file name. The name is handed back as
+  Base64 of its UTF-8 bytes: a zh-CN Windows console uses the ANSI code page (GBK/936), so
+  printing it directly decodes non-ASCII paths into U+FFFD.
+
+When the capability is missing, the platform is not win32, or the dialog fails to open, the
+in-page browser takes over.
 
 UI element mapping:
 
 | Source (Windows Indexing Options) | This plugin |
 |---|---|
 | Folder (F) list box | Entry list in each category card (with sub-item / watch status badges) |
-| Add (A)… | File / folder / drive picker (drive letters → drill into directories) |
+| Add (A)… | File / folder / drive picker; folders and drives use the OS directory dialog, files use the OS file dialog, falling back to the in-page browser |
 | Add custom (U)… | Enter an absolute path or drive letter manually |
-| Remove (R) | Per-row ✕ or Remove button |
+| Per-card master switch | Header switch on each card: turning it off only withdraws that class from the matcher — rules stay in the list and in storage, and the card dims with an "已停用" marker |
+| Select all | Highlights every entry of that card (visual only, no rule change); pinned to the right end of the action row |
+| Clear all | Appears once the card is fully selected; removes every rule of that class. It only rewrites `path-lockbox.json` — no file is deleted |
+| Per-row ✕ | Deletes a single rule (round button at the right of each row) |
 | Rescan now (U) | Existence check + recursive file count/bytes enumeration (5000 cap) + watcher refresh |
 | Rescan all (N) | Rescans every entry |
 | Index subfolders (I) | `recursive` (disabled for file entries) |
 | Monitor changes (M) | `watch`: recursive `fs.watch` on locked paths, events into a 200-entry ring buffer |
+
+**About the nav glyph.** The host's `settings.section` has no `icon` field: `navIcon(id)`
+in `SettingsRoot` recognizes only `account` / `models` / `agent-presets` / `plugins` /
+`archived-sessions` and falls back to the settings gear for everything else. So the plugin
+injects a `<style>` that hides the gear `svg` on its own row (`display: none`) and paints a
+lock through `::before` + `mask-image`, locating the row by matching its nav text; a
+`MutationObserver` keeps it correct across re-renders (locale switch, reopened dialog). If
+the host ever grows an `icon` field for `settings.section`, this can be deleted — the
+equivalent module in `dshmarket` carries the same note. The glyph is decoration only: if
+the selector stops matching it silently does nothing and the gear returns, with no effect
+on interception.
 
 Also included: a read-only status tool `lockbox_status` (visible to the model) and `GET /path-lockbox/api/events`.
 
@@ -236,11 +261,20 @@ Editing therefore happens only in the plugin UI; Settings is no longer an editor
 | 0.1.7 | `settings.section` → a 文件锁 section embedding the plugin UI |
 | 0.1.8 | drop `.volatile()` → only the 文件锁 entry remains |
 | 0.1.9 | folders/drives use the OS native directory dialog (`ctx.directoryPicker`), falling back to the in-page browser |
-| 0.1.10 | package icon is a lock (`assets/lock.svg` via the root `icon` field); the Settings nav glyph is host-fixed |
+| 0.1.10 | package icon is a lock (`assets/lock.svg` via the root `icon` field); the Settings nav glyph was host-fixed at the time (0.1.23 works around it with injected CSS) |
 | 0.1.11 | card titles renamed with inline hints: 锁定文件 / 锁定文件夹 / 锁定分区 |
 | 0.1.12 | button copy: “添加…” → “+”, “添加自定义” → “选择路径…”, with the dialog title and empty-state text aligned |
 | 0.1.13 | picker dialog titles follow the card names: 选择要锁定的文件 / 文件夹 / 分区 |
 | 0.1.14 | fix the native dialog never opening (missing `AbortSignal` on `pick`); the in-page picker falls back to the current path when nothing is selected |
+| 0.1.15 | files switch to the Win32 `OpenFileDialog`; the client no longer skips the native picker for files |
+| 0.1.16 | file names are returned as Base64 of their UTF-8 bytes — fixes non-ASCII paths decoded into U+FFFD by the console code page, which saved rules pointing at paths that do not exist; `renderCard` wraps each entry in try/catch and renders the failure reason instead of leaving the list blank |
+| 0.1.17 | fix `esc is not defined`: `esc` lived in the Node module scope, unreachable from the page `<script>`, so cards showed “N 条” with an empty list |
+| 0.1.18 | per-card master switches (`enabled`): disabling only withdraws the class from the matcher, rules are kept, and the card dims with an “已停用” marker |
+| 0.1.19 | the 移除 button had no handler at all (dead button); replaced with a working Select all pinned to the right of the action row |
+| 0.1.20 | pill-shaped buttons; the `+` button and per-row ✕ become circles |
+| 0.1.21 | Clear all appears after selecting everything: it only rewrites the rules JSON, no file is deleted |
+| 0.1.22 | lock glyph appended to the nav label (stopgap; the gear remained) |
+| 0.1.23 | injected CSS hides the host gear and draws a mask-image lock, located by nav text; the label is plain text again |
 
 Current tests: `node --test` **27/27** (matcher / extractor / host / client).
 

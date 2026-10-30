@@ -5,7 +5,8 @@
 DeepSeek Harness（dsh）插件：把指定的**文件 / 文件夹 / 硬盘分区**对 agent 彻底锁死——
 就算会话开了 danger-full-access（完全访问）也动不了。UI 为卡片式，适配宿主主题，
 按三类分卡片管理，功能布局对应 Windows「索引选项」的交互模型
-（列表 + 添加 / 添加自定义 / 移除 / 立即重扫描 / 重扫描全部 + 每条目「索引子文件夹」「尝试监控变化」）。
+（列表 + 添加 / 添加自定义 / 全选 / 清除全部 / 立即重扫描 / 重扫描全部
++ 每类独立总开关 + 每条目「索引子文件夹」「尝试监控变化」）。
 
 MIT。
 
@@ -53,6 +54,8 @@ dsh plugin --profile <profile> add github:<you>/dsh-path-lockbox
         files:   [{ path: "D:/合同/报价最终版.xlsx" }]
         folders: [{ path: "D:/客户资料", recursive: true, watch: true }]
         drives:  [{ path: "E:/", recursive: true, watch: false }]
+        # 每类总开关：关掉的那一类不参与拦截，但规则仍保留（页面上的开关写进用户层）
+        enabled: { files: true, folders: true, drives: true }
         matchCase: false
         guidance: true
 ```
@@ -63,30 +66,48 @@ dsh plugin --profile <profile> add github:<you>/dsh-path-lockbox
 
 | 入口 | 位置 | 说明 |
 |---|---|---|
-| **设置 → 文件锁**（推荐） | 设置页左侧导航 | 客户端半身注册 `settings.section`，`label` 返回中文「文件锁」 |
+| **设置 → 文件锁**（推荐） | 设置页左侧导航 | 客户端半身注册 `settings.section`，`label` 返回中文「文件锁」；导航图标由注入 CSS 画成锁头（宿主没有 icon 字段，见下） |
 | 插件详情页配置区 | 插件 → `dsh-path-lockbox` | `plugins.detail.section` 槽，只在本插件自己的页面渲染 |
 | 直达地址 | `GET /path-lockbox/ui` | 不依赖任何 slot，永远可用（也是其它入口的兜底） |
 
 `Config` schema **刻意不标 `.volatile()`**：否则 `dsh-settings` 会额外生成一个以命名空间
 id（`path-lockbox`）为标题的自动表单，与本表第一行的「文件锁」栏目重复。详见下文 0.1.8。
 
-选择路径时：**文件夹 / 硬盘**走操作系统的原生目录对话框（宿主 `ctx.directoryPicker`
-的 `native` 能力，Windows 上是 `IFileOpenDialog` + `FOS_PICKFOLDERS`）；宿主不提供该能力
-或调用失败时自动回退到内置浏览器。**文件**只有内置浏览器这一条路——native 能力是目录
-选择器，选不了文件。
+选择路径时一律走操作系统的对话框：
+
+- **文件夹 / 硬盘**：宿主 `ctx.directoryPicker` 的 `native` 能力（Windows 上是
+  `IFileOpenDialog` + `FOS_PICKFOLDERS`）。
+- **文件**：宿主那条 native 能力固定是目录选择器，选不了文件，所以插件自己调
+  Win32 `OpenFileDialog`（`powershell -NoProfile -NonInteractive -STA`）。它就是
+  资源管理器里那个「打开」对话框，返回完整绝对路径 —— 不像 `<input type="file">`
+  只给文件名。文件名以 UTF-8 字节的 Base64 回传：中文 Windows 的控制台代码页是
+  GBK(936)，直接输出会把非 ASCII 路径解成一串 U+FFFD。
+
+宿主缺少该能力、非 win32 或弹窗起不来时，自动回退到内置浏览器。
 
 卡片功能对应关系：
 
 | 截图元素 | 本插件实现 |
 |---|---|
 | 文件夹(F) 列表框 | 每类卡片中的条目列表（含子项/监控状态徽标） |
-| 添加(A)... | 文件/文件夹/硬盘选择器（盘符 → 目录逐层进入） |
+| 添加(A)... | 文件/文件夹/硬盘选择器；文件夹与硬盘走系统目录对话框，文件走系统文件对话框，失败回退内置浏览器 |
 | 添加自定义(U)... | 手输绝对路径或盘符 |
-| 移除(R) | 条目行 ✕ 或「移除」按钮 |
+| 每类总开关 | 卡片头右侧开关：关掉只退出拦截层，规则仍留在列表与存储里，卡片变暗并标注「已停用」 |
+| 全选 | 选中该类全部条目（只改高亮，不动规则），按钮固定在操作行最右 |
+| 清除全部 | 全选后才出现；移除该类**所有规则**。只重写 `path-lockbox.json`，不删除任何文件 |
+| 条目 ✕ | 删除单条规则（列表每行右侧的圆形按钮） |
 | 立即重扫描(U) | 校验存在性 + 递归枚举文件数/字节数（5000 上限）+ 刷新监控 |
 | 重扫描全部(N) | 全部条目重扫描 |
 | 索引子文件夹(I) | `recursive`（文件条目禁用） |
 | 尝试监控变化(M) | `watch`：`fs.watch` 递归监控锁定路径，事件进环形缓冲（200 条） |
+
+**关于导航图标。** 宿主的 `settings.section` 没有 `icon` 字段：`SettingsRoot` 里的
+`navIcon(id)` 只认 `account` / `models` / `agent-presets` / `plugins` / `archived-sessions`
+五个内置 id，其余一律画齿轮。所以本插件注入一段 `<style>`：把自己那一行的齿轮 `svg`
+藏掉（`display: none`），再用 `::before` + `mask-image` 画锁头，行靠导航文字匹配定位，
+`MutationObserver` 跟随重渲染（切语言、重开设置都能跟上）。宿主哪天真的给
+`settings.section` 加上 `icon` 字段，这段就可以删——`dshmarket` 的同类模块注释里也是这么写的。
+图标是纯装饰：选择器失配时静默失效（齿轮回来），不影响任何拦截能力。
 
 另有只读状态工具 `lockbox_status`（模型可见）与 `GET /path-lockbox/api/events`。
 
@@ -258,11 +279,20 @@ Context，mock `webServer.register` 捕获路由，再用 Node 风格 `req/res` 
 | 0.1.7 | `settings.section` → 设置里显示中文名「文件锁」，栏目内嵌自带界面 |
 | 0.1.8 | 去掉 `.volatile()` → 设置里只保留「文件锁」一个入口 |
 | 0.1.9 | 文件夹/硬盘改用系统原生目录对话框（`ctx.directoryPicker` → `capability().pick()`），失败回退内置浏览器 |
-| 0.1.10 | 包图标改为锁（`assets/lock.svg` + 根 `icon` 字段）；设置页导航图标由宿主固定，插件不可改 |
+| 0.1.10 | 包图标改为锁（`assets/lock.svg` + 根 `icon` 字段）；设置页导航图标当时由宿主固定、插件不可改（0.1.23 用注入 CSS 的方式补上了，见下） |
 | 0.1.11 | 类别改名并加说明：锁定文件 / 锁定文件夹 / 锁定分区 |
 | 0.1.12 | 按钮精简：「添加…」→「+」，「添加自定义」→「选择路径…」，弹窗标题与空态文案同步 |
 | 0.1.13 | 选择器弹窗标题与类别对齐：选择要锁定的文件 / 文件夹 / 分区 |
 | 0.1.14 | 修复原生目录对话框不弹出（`pick` 漏传 `AbortSignal`）；内置浏览器「确定」未选中时改用当前路径并加提示 |
+| 0.1.15 | 文件类改用 Win32 `OpenFileDialog`（系统文件对话框）；前端不再对文件跳过 native 选择 |
+| 0.1.16 | 文件名改走 UTF-8 字节的 Base64 回传——修复中文路径被控制台 GBK 代码页解成 U+FFFD、规则指向不存在路径的问题；`renderCard` 改为逐条 try/catch，渲染失败把原因写进列表而不是留空 |
+| 0.1.17 | 修复 `esc is not defined`：`esc` 原本定义在 Node 模块作用域，页内 `<script>` 访问不到，表现为卡片显示「N 条」而列表空白 |
+| 0.1.18 | 每类独立总开关（`enabled`）：停用只退出拦截层，规则保留；卡片变暗并标注「已停用」 |
+| 0.1.19 | 「移除」按钮原本没有任何事件绑定（死按钮），改为可用的「全选」，并固定在操作行最右 |
+| 0.1.20 | 按钮改胶囊形；`+` 与行内 ✕ 改圆形 |
+| 0.1.21 | 全选后出现「清除全部」：只重写规则 JSON，不删除任何文件 |
+| 0.1.22 | 设置导航文字加锁头字符（临时方案，齿轮仍在） |
+| 0.1.23 | 改为注入 CSS：藏掉宿主齿轮、用 `mask-image` 画锁图标，按导航文字匹配定位；`label` 恢复纯文字 |
 
 当前测试：`node --test` **27/27**（matcher / extractor / host / client 四组）。
 
