@@ -28,11 +28,7 @@ const PACKAGE_NAME = "dsh-path-lockbox";
 const SECTION_SLOT = "settings.section";
 const SECTION_ID = "path-lockbox";
 const SECTION_ORDER = 50;
-// 宿主把设置导航的图标硬编码成 IconSettingsOutlineMedium（齿轮）：
-// contract 只有 id/order/label，没有 icon 位，也不能复用内置 id 的图标
-// （agent-presets / plugins / archived-sessions 会抢别人的栏目）。
-// 所以用锁头字符补一个视觉提示 —— 这是插件层面唯一能改的部分。
-const SECTION_LABEL = "🔒 文件锁";
+const SECTION_LABEL = "文件锁";
 // iframe 的 title 走读屏，保持纯文字（不混 emoji）
 const FRAME_TITLE = "文件锁";
 
@@ -76,6 +72,111 @@ function PathLockboxPanel(props) {
   return PathLockboxFrame(PACKAGE_NAME, "78vh");
 }
 
+// ---- 设置导航图标 -----------------------------------------------------------
+//
+// 宿主的 settings.section 没有 icon 选项：SettingsRoot 里的 navIcon(id) 只认
+// account / models / agent-presets / plugins / archived-sessions 五个内置 id，
+// 其余一律画齿轮。所以第三方插件（dshmarket、better-sidebar…）走的都是同一条路：
+// 注入一段 CSS 把宿主那个齿轮 svg 藏掉，再用 mask-image 画自己的图标，靠导航
+// 按钮的文字匹配定位到自己那一行。
+//
+// dshmarket 的源码注释写得很直白：「Delete this module the day
+// settings.section grows an icon field.」等宿主真加了 icon 字段，这段就能删。
+
+const NAV_MARK = "data-dsh-lockbox-nav";
+const NAV_ROW_SELECTOR = '[role="dialog"] nav button';
+
+/** 锁图标（lucide lock），用描边的 alpha 当 mask。 */
+const LOCK_MASK =
+  "data:image/svg+xml;utf8," +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+  );
+
+const NAV_ICON_CSS = [
+  "[" + NAV_MARK + "] > svg { display: none; }",
+  "[" + NAV_MARK + "]::before {",
+  "  content: '';",
+  "  flex: none;",
+  "  width: 16px;",
+  "  height: 16px;",
+  "  background-color: currentColor;",
+  '  -webkit-mask-image: url("' + LOCK_MASK + '");',
+  '  mask-image: url("' + LOCK_MASK + '");',
+  "  -webkit-mask-repeat: no-repeat;",
+  "  mask-repeat: no-repeat;",
+  "  -webkit-mask-position: center;",
+  "  mask-position: center;",
+  "  -webkit-mask-size: 16px 16px;",
+  "  mask-size: 16px 16px;",
+  "}",
+].join("\n");
+
+/**
+ * 给自己的设置导航行装一个锁头图标。
+ *
+ * 只在渲染进程里工作；宿主换版本导致选择器失配时静默不动（齿轮还在，功能不受
+ * 影响），绝不因为图标而抛错 —— 那会让 client entry 激活失败、拖垮 web boot。
+ *
+ * @param ctx - client 上下文（用 effect 管理生命周期）。
+ * @param getLabel - 返回当前导航文字；与 settings.section 的 label 同一个来源。
+ */
+function installNavIcon(ctx, getLabel) {
+  if (typeof document === "undefined" || typeof MutationObserver === "undefined") return;
+
+  const run = () => {
+    const style = document.createElement("style");
+    style.dataset.plugin = PACKAGE_NAME;
+    style.dataset.pluginCss = PACKAGE_NAME + "/settings-nav-icon";
+    style.textContent = NAV_ICON_CSS;
+    document.head.appendChild(style);
+
+    let scheduled = false;
+    const mark = () => {
+      scheduled = false;
+      const wanted = String(getLabel() ?? "").trim();
+      if (!wanted) return;
+      let buttons;
+      try {
+        buttons = document.querySelectorAll(NAV_ROW_SELECTOR);
+      } catch {
+        return;
+      }
+      for (const btn of buttons) {
+        const text = String(btn.textContent ?? "").trim();
+        if (text === wanted) btn.setAttribute(NAV_MARK, "");
+        else btn.removeAttribute(NAV_MARK);
+      }
+    };
+    const schedule = () => {
+      if (scheduled) return;
+      scheduled = true;
+      if (typeof requestAnimationFrame === "function") requestAnimationFrame(mark);
+      else setTimeout(mark, 0);
+    };
+
+    const observer = new MutationObserver(schedule);
+    try {
+      observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    } catch {
+      // body 还没就绪：下面的 schedule() 会先跑一次，之后靠观察器兜底
+    }
+    schedule();
+
+    return () => {
+      observer.disconnect();
+      style.remove();
+    };
+  };
+
+  try {
+    if (typeof ctx?.effect === "function") ctx.effect(() => run());
+    else run();
+  } catch {
+    // 图标是锦上添花，失败不影响任何拦截能力
+  }
+}
+
 export function apply(ctx) {
   if (!React) return;
   let slots;
@@ -103,6 +204,9 @@ export function apply(ctx) {
   } catch {
     // 设置页未提供该槽：跳过，不影响插件详情页与 /path-lockbox/ui
   }
+
+  // 设置导航的锁头图标：宿主没有 icon 字段，只能靠注入 CSS 盖掉齿轮再画。
+  installNavIcon(ctx, () => SECTION_LABEL);
 
   try {
     slots.inject(PANEL_SLOT, () => slots.register({ name: PANEL_SLOT, key: PANEL_KEY }, PathLockboxPanel));
